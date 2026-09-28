@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.env*.local
 !.env.example
 
 # vercel
@@ -41,8 +42,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local data (PGlite, files, outbox)
+# local data (PGlite, files, outbox) + test output
 .data/
+/.next/
+node_modules/
 test-results/
 playwright-report/
 

@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { seedShiftDays } from "./src/db/seed-clock";
 
 const port = Number(process.env.E2E_PORT ?? 3100);
 const dataDir = ".data/e2e";
@@ -10,6 +11,15 @@ const snapshotDir = ".data/e2e-snapshot";
  * Every spec file calls `resetDb()` (tests/e2e/helpers.ts) in `beforeAll` → POST /api/test/reset restores the snapshot
  * in-process (E2E_RESET=1 only), so spec files never see each other's mutations and can run in any order.
  */
+/**
+ * Today-relative seed (src/db/seed-clock.ts), resolved ONCE per run: the seeding web server and every spec (helpers.ts
+ * `sd()`) see the same SEED_SHIFT_DAYS, so the seed's "today" is the day the suite starts and the app — which runs on
+ * the real clock, server and browser — shows the SPEC §7 picture (3 stale · 9 waiting on us · offers valid · ETAs
+ * ahead). Pinning 0 instead would rot within days: quotes valid until 30 Sep 2026 expire, offers lapse, lines go stale.
+ * Export SEED_SHIFT_DAYS yourself to reproduce a run from another day.
+ */
+process.env.SEED_SHIFT_DAYS ??= String(seedShiftDays());
+
 const seedAndSnapshot = `npm run db:seed && node -e "const fs=require('fs');fs.rmSync('${snapshotDir}',{recursive:true,force:true});fs.cpSync('${dataDir}','${snapshotDir}',{recursive:true})"`;
 
 export default defineConfig({
@@ -33,6 +43,7 @@ export default defineConfig({
       FILES_DIR: `${dataDir}/files`,
       OUTBOX_LOG: `${dataDir}/outbox.log`,
       E2E_RESET: "1",
+      SEED_SHIFT_DAYS: process.env.SEED_SHIFT_DAYS,
       AUTH_RATE_LIMIT: "off", // `next start` (CI=1) enables Better Auth's per-IP sign-in limiter; the suite logs in ~100×
       E2E_SNAPSHOT_DIR: snapshotDir,
       PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? "/opt/pw-browsers",

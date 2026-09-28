@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { resetDb } from "./helpers";
+import { resetDb, sdLong } from "./helpers";
 
 /**
  * Foundation smoke (runs against a freshly seeded PGlite dir, see playwright.config.ts):
@@ -49,7 +49,7 @@ test("client login → /app dashboard with seeded content, no supplier leaks", a
   await expect(items.first().getByRole("link", { name: "Approve sample" })).toBeVisible();
   // AC-DASH-03: groups + counts + ETA
   const groups = page.getByTestId("active-groups");
-  await expect(groups.locator("[data-milestone-group=in_production]")).toContainText("ETA Gdańsk 18 Nov 2026");
+  await expect(groups.locator("[data-milestone-group=in_production]")).toContainText(`ETA Gdańsk ${sdLong("2026-11-18")}`);
   await expect(groups.locator("[data-milestone-group=finding_factory] [data-testid=active-line]")).toHaveCount(6);
   await expect(groups.locator("[data-milestone-group=sample] [data-testid=active-line]")).toHaveCount(1);
   await expect(groups.locator("[data-ref='REQ-2026-0312-11']")).toContainText("3 contacted · 2 quoted");

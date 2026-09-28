@@ -15,6 +15,7 @@ process.env.PGLITE_DIR = path.join(dir, "pglite");
 process.env.FILES_DIR = path.join(dir, "files");
 process.env.OUTBOX_LOG = path.join(dir, "outbox.log");
 process.env.SEED_CLOCK = "2026-09-28T09:00:00Z";
+process.env.SEED_SHIFT_DAYS = "0"; // the literal SPEC §7 dates (the seed is today-relative by default)
 delete process.env.DATABASE_URL;
 
 type Ctx = import("@/server/shared/authorize").Ctx;

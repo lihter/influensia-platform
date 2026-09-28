@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { resetDb } from "./helpers";
+import { resetDb, sd, sdLong } from "./helpers";
 
 /**
  * Line page + sourcing board + offers + samples (SPEC F-07, F-08, F-09, F-15…F-20). Runs against the freshly seeded
@@ -33,10 +33,12 @@ test.describe.serial("ops line page", () => {
     await expect(strip).toContainText("2 stale");
     await expect(page.locator("[data-supplier='SUP-0017']")).toContainText("ZZLEAKTEST"); // canary present on ops (SPEC 5.4 step 5)
     await expect(page.locator("[data-supplier='SUP-0007'] [data-testid=usd-cell]")).toContainText("$0.0539");
-    // Fuli was last contacted 2026-09-13 (seed); the cell is calendar days to the server's wall clock — 15 d on the
-    // seed day (28 Sep), so derive it from today instead of breaking when a run crosses midnight (server TZ = this TZ)
+    // Fuli was last contacted 2026-09-13 (SPEC date, shifted by the today-relative seed); the cell is calendar days to
+    // the server's wall clock — 15 d on the seed day, so derive it from today instead of breaking when a run crosses
+    // midnight (server TZ = this TZ)
     const t = new Date();
-    const fuliDays = Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime() - new Date(2026, 8, 13).getTime()) / 86_400_000);
+    const [fy, fm, fd] = sd("2026-09-13").split("-").map(Number);
+    const fuliDays = Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime() - new Date(fy, fm - 1, fd).getTime()) / 86_400_000);
     await expect(page.locator("[data-supplier='SUP-0013'] [data-testid=last-cell]")).toHaveText(new RegExp(`^${fuliDays} d`));
   });
 
@@ -47,7 +49,7 @@ test.describe.serial("ops line page", () => {
     await page.getByTestId("row-log-quote").click();
     await page.getByTestId("quote-port").fill("Shenzhen");
     await page.getByTestId("quote-moq").fill("50000");
-    await page.getByTestId("quote-valid").fill("2026-10-31");
+    await page.getByTestId("quote-valid").fill(sd("2026-10-31"));
     await page.getByTestId("break-qty").first().fill("50000");
     await page.getByTestId("break-price").first().fill("0.049");
     await page.getByTestId("add-break").click();
@@ -105,7 +107,7 @@ test.describe.serial("ops line page", () => {
     await expect(page.getByTestId("timeline")).toContainText("Production photos from the line");
     await page.getByRole("button", { name: /Show all \d+ updates/ }).click(); // FIX-C: the feed shows the latest 15 first
     await expect(page.getByTestId("timeline")).toContainText("Daryl (Yuantuo)"); // AC-TL-01 WhatsApp log present
-    await expect(page.getByTestId("timeline")).toContainText("Suti registered 2026-03");
+    await expect(page.getByTestId("timeline")).toContainText(`Suti registered ${sd("2026-03-01").slice(0, 7)}`);
   });
 });
 
@@ -117,7 +119,7 @@ test.describe.serial("client pages", () => {
     await expect(page.getByTestId("facts-strip")).toContainText("100,000");
     await expect(page.getByTestId("facts-strip")).toContainText("$0.062");
     await expect(page.getByTestId("facts-strip")).toContainText("fee per order"); // FIX-B: "per pc + $540.00 fee per order"
-    await expect(page.getByTestId("facts-strip")).toContainText("18 Nov 2026");
+    await expect(page.getByTestId("facts-strip")).toContainText(sdLong("2026-11-18"));
     await expect(page.getByTestId("order-card")).toHaveAttribute("href", "/app/orders/ORD-2026-0312");
     await page.getByTestId("tab-documents").click();
     const docs = page.getByTestId("documents");

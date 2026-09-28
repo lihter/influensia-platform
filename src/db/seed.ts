@@ -2,15 +2,17 @@
  * SPEC §7 seed — `npm run db:seed`. Idempotent: PGlite dir, files dir and outbox.log are removed and rebuilt
  * (Postgres: every app/supplier/auth table is truncated first). Run with the dev server STOPPED in PGlite mode.
  *
- * Seed "today" = 2026-09-28 (SEED_CLOCK). Timestamps below are 09:00 UTC on the given day unless a time is given.
+ * Dates below are written for seed "today" = 2026-09-28 and are TODAY-RELATIVE: every absolute date/timestamp the seed
+ * writes goes through `d()` (instants) or `sd()` (yyyy-mm-dd), which move it by SHIFT whole days (./seed-clock.ts:
+ * SEED_SHIFT_DAYS, else real UTC date − 28 Sep 2026). Timestamps are 09:00 UTC on the given day unless a time is given.
+ * Human-form dates in texts are generated from the shifted dates with the shared formatter. Refs (REQ-2026-0312…) and
+ * bank/booking references are identifiers, not dates, and never move.
  * Users are created through `inviteUser()` (→ Better Auth sign-up + org hook) so password hashing and memberships are real.
  */
 import { rmSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { sql, eq } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
-
-process.env.SEED_CLOCK ??= "2026-09-28T09:00:00Z";
 
 import { getDb, PGLITE_DIR, type Db } from "./index";
 import * as A from "./schema/app";
@@ -29,9 +31,18 @@ import { waitingItems } from "@/server/client/dashboard";
 import { leakCheck, loadLeakSources } from "@/server/shared/leak-check";
 import { ORDER_CONFIRMED_TEXT } from "@/server/ops/orders";
 import { stripCompanySuffix } from "@/server/shared/leak-check";
+import { fmtDate } from "@/lib/format-date";
+import { seedShiftDays, shiftDay, seedClockIso } from "./seed-clock";
 
 /* ───────────── helpers ───────────── */
-const d = (day: string, time = "09:00") => new Date(`${day}T${time}:00Z`);
+/** Whole days every seeded date moves (set at the start of `seed()`; see ./seed-clock.ts). */
+let SHIFT = 0;
+/** yyyy-mm-dd date column / payload value, shifted. */
+const sd = (day: string) => shiftDay(day, SHIFT);
+/** Instant (timestamp column), shifted: 09:00 UTC on `day` unless a time is given. */
+const d = (day: string, time = "09:00") => new Date(`${sd(day)}T${time}:00Z`);
+/** "0914" — month+day of a shifted date (file names like wa-yuantuo-0914.png). */
+const mmdd = (day: string) => sd(day).slice(5).replace("-", "");
 const e2 = (unit: number) => Math.round(unit * 10000);   // unit price → minor×100
 const minor = (amount: number) => Math.round(amount * 100);
 const id = () => uuidv7();
@@ -137,13 +148,16 @@ async function fileBody(filename: string): Promise<{ data: Buffer; mime: string 
   if (ext === "pdf") return { data: pdfBytes(filename), mime: "application/pdf" };
   if (ext === "jpg" || ext === "jpeg") return { data: await imageBytes(pictureTitle(filename), "jpg"), mime: "image/jpeg" };
   if (ext === "png") return { data: await imageBytes(pictureTitle(filename), "png"), mime: "image/png" };
-  if (ext === "xlsx") return { data: Buffer.from(/^quote-2026-09-12/.test(filename) ? "ZZLEAKTEST Co., Ltd. — quotation 2026-09-12 (canary: never publish)\n" : `${filename}\n`), mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+  const canary = filename.match(/^quote-(\d{4}-\d{2}-\d{2})/); // the ZZLEAKTEST quote (+ its copy on the order)
+  if (ext === "xlsx") return { data: Buffer.from(canary ? `ZZLEAKTEST Co., Ltd. — quotation ${canary[1]} (canary: never publish)\n` : `${filename}\n`), mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
   return { data: Buffer.from(`placeholder: ${filename}\n`), mime: "application/octet-stream" };
 }
 
 /* ───────────── main ───────────── */
 export async function seed() {
   const t0 = Date.now();
+  SHIFT = seedShiftDays();
+  process.env.SEED_CLOCK = seedClockIso(SHIFT); // the seed's "now" (clock.ts) = 09:00 UTC on the shifted 28 Sep 2026
   resetLocal();
   const db = await getDb();
   await truncateAll(db);
@@ -182,7 +196,7 @@ export async function seed() {
   const rules: [string, number, number, number, number][] = [["packaging", 20, 15, 10, 4], ["fitness", 20, 18, 10, 2], ["garden", 20, 15, 8, 2], ["lighting", 20, 18, 10, 2], ["safety", 20, 20, 10, 3], ["seasonal", 20, 15, 8, 2], ["default", 20, 15, 10, 2]];
   for (const [category, upliftPct, marginPct, feePct, rounding] of rules) { await db.insert(A.pricingRules).values({ id: id(), category, upliftPct, marginPct, feePct, rounding, createdBy: U("marko") }); bump("pricing_rules"); }
   for (const [date, base, quote, rate, source] of [["2026-09-21", "USD", "CNY", 6.6933, "tradingeconomics"], ["2026-06-15", "USD", "CNY", 7.18, "tradingeconomics"], ["2026-09-21", "USD", "EUR", 0.92, "tradingeconomics"]] as const) {
-    await db.insert(A.fxRates).values({ id: id(), date, base, quote, rate, source }); bump("fx_rates");
+    await db.insert(A.fxRates).values({ id: id(), date: sd(date), base, quote, rate, source }); bump("fx_rates");
   }
 
   /* 7.4 suppliers */
@@ -209,7 +223,7 @@ export async function seed() {
   const contactIds: Record<string, string> = {};
   for (const s of sups) {
     const sid = id(); ids[s.ref] = sid;
-    await db.insert(S.suppliers).values({ id: sid, ref: s.ref, legalName: s.legalName, normalisedName: stripCompanySuffix(s.legalName), cnName: s.cnName ?? null, typeVerdict: s.verdict, verdictSource: s.source, verdictCheckedAt: d("2026-08-29"), grade: s.grade ?? null, uscc: s.uscc ?? null, registeredAt: s.registered ?? null, capital: s.capital ?? null, city: s.city ?? null, ports: s.ports, notes: s.notes ?? null, disclosedToOrgIds: s.disclosedTo ?? [], createdBy: U("bogdan"), createdAt: d("2026-06-01"), updatedAt: d("2026-06-01") });
+    await db.insert(S.suppliers).values({ id: sid, ref: s.ref, legalName: s.legalName, normalisedName: stripCompanySuffix(s.legalName), cnName: s.cnName ?? null, typeVerdict: s.verdict, verdictSource: s.source, verdictCheckedAt: d("2026-08-29"), grade: s.grade ?? null, uscc: s.uscc ?? null, registeredAt: s.registered ? sd(s.registered) : null, capital: s.capital ?? null, city: s.city ?? null, ports: s.ports, notes: s.notes ?? null, disclosedToOrgIds: s.disclosedTo ?? [], createdBy: U("bogdan"), createdAt: d("2026-06-01"), updatedAt: d("2026-06-01") });
     bump("suppliers");
     for (const [i, c] of s.contacts.entries()) {
       const cid = id(); contactIds[`${s.ref}:${i}`] = cid;
@@ -241,7 +255,7 @@ export async function seed() {
   ];
   for (const p of prods) {
     const pid = id(); ids[p.ref] = pid;
-    await db.insert(A.products).values({ id: pid, ref: p.ref, ownerOrgId: p.owner, name: p.name, category: p.category, unit: p.unit, visibility: p.catalog ? "catalog" : "private", referencePriceMinorE2: p.catalog ? e2(p.catalog.price) : null, referenceCurrency: "USD", referenceMoq: p.catalog?.moq ?? null, referenceIncoterm: p.catalog?.incoterm ?? null, referencePort: p.catalog?.port ?? null, referenceSpecVersion: p.catalog?.specV ?? null, referenceValidUntil: p.catalog?.valid ?? null, publishedAt: p.catalog ? d("2026-09-21") : null, createdBy: U("bogdan"), createdAt: d(p.specs[0].at), updatedAt: d(p.specs[0].at) });
+    await db.insert(A.products).values({ id: pid, ref: p.ref, ownerOrgId: p.owner, name: p.name, category: p.category, unit: p.unit, visibility: p.catalog ? "catalog" : "private", referencePriceMinorE2: p.catalog ? e2(p.catalog.price) : null, referenceCurrency: "USD", referenceMoq: p.catalog?.moq ?? null, referenceIncoterm: p.catalog?.incoterm ?? null, referencePort: p.catalog?.port ?? null, referenceSpecVersion: p.catalog?.specV ?? null, referenceValidUntil: p.catalog ? sd(p.catalog.valid) : null, publishedAt: p.catalog ? d("2026-09-21") : null, createdBy: U("bogdan"), createdAt: d(p.specs[0].at), updatedAt: d(p.specs[0].at) });
     bump("products");
     for (const s of p.specs) { await db.insert(A.productSpecs).values({ id: id(), productId: pid, version: s.v, fields: s.fields, frozenAt: d(s.at), frozenBy: U("bogdan"), createdAt: d(s.at) }); bump("product_specs"); }
     if (p.catalog) {
@@ -327,7 +341,7 @@ export async function seed() {
     { line: "REQ-2026-0290-01", sup: "SUP-0017", status: "dropped", reason: "canary", first: "2026-06-03", last: "2026-06-04" },
     { line: "REQ-2026-0301-01", sup: "SUP-0003", status: "selected", first: "2026-09-13", last: "2026-09-25", quotes: [{ at: "2026-09-20", incoterm: "EXW", port: "Linyi", breaks: [[10000, 0.205]], moq: 10000, lead: 25, valid: "2026-10-31", terms: "30/70 T/T" }] },
     { line: "REQ-2026-0305-01", sup: "SUP-0004", status: "negotiating", first: "2026-09-14", last: "2026-09-24", quotes: [{ at: "2026-09-17", incoterm: "FOB", port: "Ningbo", breaks: [[500, 9.33], [1000, 8.9], [3000, 8.7]], moq: 500, lead: 30, valid: "2026-10-15" }, { at: "2026-09-24", incoterm: "FOB", port: "Ningbo", breaks: [[1000, 8.4]], moq: 500, lead: 30, valid: "2026-10-15" }] },
-    { line: "REQ-2026-0312-01", sup: "SUP-0007", status: "selected", first: "2026-09-05", last: "2026-09-26", quotes: [{ at: "2026-09-15", incoterm: "FOB", port: "Shenzhen", breaks: [[100000, 0.0539]], moq: 100000, lead: 30, valid: "2026-09-30", terms: "T/T 30/70", dev: "none at spec thickness", weight: 0.58, file: "Yuantuo-quote-2026-09-15.xlsx" }] },
+    { line: "REQ-2026-0312-01", sup: "SUP-0007", status: "selected", first: "2026-09-05", last: "2026-09-26", quotes: [{ at: "2026-09-15", incoterm: "FOB", port: "Shenzhen", breaks: [[100000, 0.0539]], moq: 100000, lead: 30, valid: "2026-09-30", terms: "T/T 30/70", dev: "none at spec thickness", weight: 0.58, file: `Yuantuo-quote-${sd("2026-09-15")}.xlsx` }] },
     { line: "REQ-2026-0312-01", sup: "SUP-0008", status: "dropped", reason: "6-month-old trader; double-wall micron suspicion", first: "2026-09-05", last: "2026-09-05", quotes: [{ at: "2026-09-06", unit: "bag", pack: 100, incoterm: "FOB", port: "Ningbo", breaks: [[3000, 3.2]], moq: 3000, lead: 8, leadMax: 10, valid: "2026-09-08", terms: "50 % deposit" }] },
     { line: "REQ-2026-0312-01", sup: "SUP-0009", status: "quoted", first: "2026-09-06", last: "2026-09-16", quotes: [{ at: "2026-09-10", unit: "bag", pack: 100, incoterm: "EXW", uncertain: true, breaks: [[3000, 3.48]], moq: 3000, valid: "2026-10-15", dev: "states 80/100 µm film" }] },
     { line: "REQ-2026-0312-01", sup: "SUP-0010", status: "quoted", first: "2026-09-06", last: "2026-09-20", quotes: [{ at: "2026-09-12", unit: "pack", pack: 100, incoterm: "FOB", port: "Shenzhen", breaks: [[1000, 7.45]], moq: 1000, lead: 40, leadMax: 45, valid: "2026-10-20" }] },
@@ -335,7 +349,7 @@ export async function seed() {
     { line: "REQ-2026-0312-01", sup: "SUP-0012", status: "contacted", first: "2026-09-05", last: "2026-09-18" },
     { line: "REQ-2026-0312-01", sup: "SUP-0013", status: "contacted", first: "2026-09-13", last: "2026-09-13" },
     { line: "REQ-2026-0312-01", sup: "SUP-0014", status: "cannot_make", reason: "metal only", first: "2026-09-05", last: "2026-09-05" },
-    { line: "REQ-2026-0312-01", sup: "SUP-0017", status: "quoted", first: "2026-09-08", last: "2026-09-12", quotes: [{ at: "2026-09-12", incoterm: "FOB", uncertain: true, port: "Shenzhen", breaks: [[100000, 0.05]], moq: 100000, lead: 30, valid: "2026-09-20", file: "quote-2026-09-12.xlsx" }] },
+    { line: "REQ-2026-0312-01", sup: "SUP-0017", status: "quoted", first: "2026-09-08", last: "2026-09-12", quotes: [{ at: "2026-09-12", incoterm: "FOB", uncertain: true, port: "Shenzhen", breaks: [[100000, 0.05]], moq: 100000, lead: 30, valid: "2026-09-20", file: `quote-${sd("2026-09-12")}.xlsx` }] },
     { line: "REQ-2026-0312-02", sup: "SUP-0007", status: "selected", first: "2026-09-05", last: "2026-09-26", quotes: [{ at: "2026-09-15", incoterm: "FOB", port: "Shenzhen", breaks: [[100000, 0.045]], moq: 100000, lead: 30, valid: "2026-09-30", weight: 0.51 }] },
     { line: "REQ-2026-0312-02", sup: "SUP-0008", status: "dropped", reason: "trader", first: "2026-09-05", last: "2026-09-05", quotes: [{ at: "2026-09-06", incoterm: "FOB", port: "Ningbo", breaks: [[100000, 0.028]], moq: 100000, valid: "2026-09-08" }] },
     { line: "REQ-2026-0312-02", sup: "SUP-0009", status: "quoted", first: "2026-09-06", last: "2026-09-16", quotes: [{ at: "2026-09-10", incoterm: "EXW", uncertain: true, breaks: [[100000, 0.03]], moq: 100000, valid: "2026-10-15" }] },
@@ -368,7 +382,7 @@ export async function seed() {
       const top = q.breaks[q.breaks.length - 1][1];
       const perUnit = q.pack ? top / q.pack : top;
       const usd = currency === "CNY" ? perUnit / 6.6933 : perUnit;
-      await db.insert(S.quotes).values({ id: qid, participationId: pid, version: i + 1, currency, unit: q.unit ?? lineUnit, packQty: q.pack ?? null, incoterm: q.incoterm, incotermUncertain: !!q.uncertain, port: q.port ?? null, moq: q.moq ?? null, leadDays: q.lead ?? null, leadDaysMax: q.leadMax ?? null, validUntil: q.valid, paymentTerms: q.terms ?? null, deviations: q.dev ?? null, unitWeightG: q.weight ?? null, normalisedUsdMinorE2: e2(usd), fxRate: currency === "CNY" ? 6.6933 : 1, fxDate: currency === "CNY" ? "2026-09-21" : null, flags: q.flags ?? [], receivedAt: d(q.at), createdBy: U("bogdan"), createdAt: d(q.at) });
+      await db.insert(S.quotes).values({ id: qid, participationId: pid, version: i + 1, currency, unit: q.unit ?? lineUnit, packQty: q.pack ?? null, incoterm: q.incoterm, incotermUncertain: !!q.uncertain, port: q.port ?? null, moq: q.moq ?? null, leadDays: q.lead ?? null, leadDaysMax: q.leadMax ?? null, validUntil: sd(q.valid), paymentTerms: q.terms ?? null, deviations: q.dev ?? null, unitWeightG: q.weight ?? null, normalisedUsdMinorE2: e2(usd), fxRate: currency === "CNY" ? 6.6933 : 1, fxDate: currency === "CNY" ? sd("2026-09-21") : null, flags: q.flags ?? [], receivedAt: d(q.at), createdBy: U("bogdan"), createdAt: d(q.at) });
       bump("quotes");
       for (const [minQty, price] of q.breaks) { await db.insert(S.quotePriceBreaks).values({ id: id(), quoteId: qid, minQty, unitPriceMinorE2: e2(price) }); bump("quote_price_breaks"); }
       if (q.file) quoteDocs.push({ line: p.line, file: q.file, at: q.at });
@@ -398,7 +412,7 @@ export async function seed() {
     const oid = id(); ids[o.ref] = oid;
     const org = lineOrg[o.line];
     const optIds: Record<string, string> = {};
-    await db.insert(A.offers).values({ id: oid, ref: o.ref, orgId: org, requestLineId: LINE(o.line), version: 1, status: o.status, pricingDisplay: "factory_plus_fee", incoterm: o.incoterm, port: o.port, validUntil: o.valid, sentAt: d(o.sent), decidedAt: o.decided ? d(o.decided) : null, decidedBy: o.decided ? (org === KOFF.id ? U("anna") : U("piotr")) : null, createdBy: U("bogdan"), createdAt: d(o.sent), updatedAt: d(o.decided ?? o.sent) });
+    await db.insert(A.offers).values({ id: oid, ref: o.ref, orgId: org, requestLineId: LINE(o.line), version: 1, status: o.status, pricingDisplay: "factory_plus_fee", incoterm: o.incoterm, port: o.port, validUntil: sd(o.valid), sentAt: d(o.sent), decidedAt: o.decided ? d(o.decided) : null, decidedBy: o.decided ? (org === KOFF.id ? U("anna") : U("piotr")) : null, createdBy: U("bogdan"), createdAt: d(o.sent), updatedAt: d(o.decided ?? o.sent) });
     bump("offers");
     for (const op of o.options) {
       const optId = id(); optIds[op.label] = optId;
@@ -417,7 +431,7 @@ export async function seed() {
   for (const s of smps) {
     const sid = id(); ids[s.ref] = sid;
     await db.insert(A.samples).values({ id: sid, ref: s.ref, orgId: PIOTR.id, requestLineId: LINE(s.line), participationId: partId[`${s.line}:SUP-0007`] as never, status: s.status, costMinor: minor(45), currency: "USD", paidBy: "client", courier: "DHL", tracking: s.tracking, orderedAt: d(s.ordered), shippedAt: d(s.shipped), receivedAt: d(s.received), decidedAt: s.decided ? d(s.decided) : null, decidedBy: s.decided ? U("piotr") : null, approvedBy: s.decided ? U("piotr") : null, approvedAt: s.decided ? d(s.decided) : null, createdBy: U("bogdan"), createdAt: d(s.ordered), updatedAt: d(s.decided ?? s.received) });
-    await db.insert(A.payments).values({ id: id(), orgId: PIOTR.id, requestLineId: LINE(s.line), kind: "sample", amountMinor: minor(45), currency: "USD", payee: "agency", status: "paid", dueOn: s.ordered, paidAt: d(s.paid), reference: s.payRef, recordedBy: U("bogdan"), createdBy: U("bogdan"), createdAt: d(s.ordered), updatedAt: d(s.paid) });
+    await db.insert(A.payments).values({ id: id(), orgId: PIOTR.id, requestLineId: LINE(s.line), kind: "sample", amountMinor: minor(45), currency: "USD", payee: "agency", status: "paid", dueOn: sd(s.ordered), paidAt: d(s.paid), reference: s.payRef, recordedBy: U("bogdan"), createdBy: U("bogdan"), createdAt: d(s.ordered), updatedAt: d(s.paid) });
     bump("samples"); bump("payments");
   }
 
@@ -427,15 +441,15 @@ export async function seed() {
   const OL0290 = id();
   await db.insert(A.orderLines).values({ id: OL0290, orderId: ORD0290, requestLineId: LINE("REQ-2026-0290-01"), productId: PRD("PRD-0001"), specVersion: 2, lineNo: 1, qty: 1000, unit: "set", unitPriceMinorE2: e2(7.52), feeMinor: minor(300), factoryUnitPriceMinorE2: e2(6.9), participationId: partId["REQ-2026-0290-01:SUP-0001"] as never, artworkRequired: false, createdAt: d("2026-06-15") });
   for (const [kind, pct, amount, due, paid, ref] of [["deposit", 30, 2256, "2026-06-20", "2026-06-20", "WIRE-0620"], ["fee", null, 300, "2026-06-20", "2026-06-20", "WIRE-0620"], ["balance", 70, 5264, "2026-07-13", "2026-07-09", "WIRE-0709"]] as const) {
-    await db.insert(A.payments).values({ id: id(), orgId: KOFF.id, orderId: ORD0290, kind, pct, amountMinor: minor(amount), currency: "USD", payee: "agency", status: "paid", dueOn: due, paidAt: d(paid), reference: ref, recordedBy: U("bogdan"), createdBy: U("bogdan"), createdAt: d("2026-06-15"), updatedAt: d(paid) }); bump("payments");
+    await db.insert(A.payments).values({ id: id(), orgId: KOFF.id, orderId: ORD0290, kind, pct, amountMinor: minor(amount), currency: "USD", payee: "agency", status: "paid", dueOn: sd(due), paidAt: d(paid), reference: ref, recordedBy: U("bogdan"), createdBy: U("bogdan"), createdAt: d("2026-06-15"), updatedAt: d(paid) }); bump("payments");
   }
   const PO0290 = id();
-  await db.insert(S.purchaseOrders).values({ id: PO0290, ref: "PO-2026-0290-01", orgId: KOFF.id, orderId: ORD0290, supplierId: SUP("SUP-0001"), factoryTotalMinor: minor(6900), currency: "USD", terms: "30/70 T/T", exworksEta: "2026-07-10", status: "completed", issuedAt: d("2026-06-20"), createdBy: U("bogdan"), createdAt: d("2026-06-15"), updatedAt: d("2026-08-28") });
+  await db.insert(S.purchaseOrders).values({ id: PO0290, ref: "PO-2026-0290-01", orgId: KOFF.id, orderId: ORD0290, supplierId: SUP("SUP-0001"), factoryTotalMinor: minor(6900), currency: "USD", terms: "30/70 T/T", exworksEta: sd("2026-07-10"), status: "completed", issuedAt: d("2026-06-20"), createdBy: U("bogdan"), createdAt: d("2026-06-15"), updatedAt: d("2026-08-28") });
   await db.update(A.orderLines).set({ poId: PO0290 as never }).where(eq(A.orderLines.id, OL0290));
   const INSP0290 = id();
-  await db.insert(A.inspections).values({ id: INSP0290, orgId: KOFF.id, orderId: ORD0290, poId: PO0290 as never, inspector: "Bogdan", scheduledFor: "2026-07-08", inspectedAt: d("2026-07-08"), aql: "2.5", sampleSize: 125, result: "pass", defectsNote: "0 critical, 3 minor", visibleToClient: true, createdBy: U("bogdan"), createdAt: d("2026-07-06"), updatedAt: d("2026-07-08") });
+  await db.insert(A.inspections).values({ id: INSP0290, orgId: KOFF.id, orderId: ORD0290, poId: PO0290 as never, inspector: "Bogdan", scheduledFor: sd("2026-07-08"), inspectedAt: d("2026-07-08"), aql: "2.5", sampleSize: 125, result: "pass", defectsNote: "0 critical, 3 minor", visibleToClient: true, createdBy: U("bogdan"), createdAt: d("2026-07-06"), updatedAt: d("2026-07-08") });
   const SHIP0290 = id();
-  await db.insert(A.shipments).values({ id: SHIP0290, orgId: KOFF.id, orderId: ORD0290, forwarder: "Rohlig Suus", forwarderParty: "client", bookingRef: "RS-2026-07-4471", mode: "sea", containerOrAwb: "MSKU4471021", cargoReady: "2026-07-10", exworksShippedAt: d("2026-07-11"), etd: "2026-07-14", etaPort: "2026-08-26", portOfDischarge: "Gdańsk", arrivedPortAt: d("2026-08-26"), customsStatus: "cleared", deliveredAt: d("2026-08-28"), createdBy: U("bogdan"), createdAt: d("2026-07-10"), updatedAt: d("2026-08-28") });
+  await db.insert(A.shipments).values({ id: SHIP0290, orgId: KOFF.id, orderId: ORD0290, forwarder: "Rohlig Suus", forwarderParty: "client", bookingRef: "RS-2026-07-4471", mode: "sea", containerOrAwb: "MSKU4471021", cargoReady: sd("2026-07-10"), exworksShippedAt: d("2026-07-11"), etd: sd("2026-07-14"), etaPort: sd("2026-08-26"), portOfDischarge: "Gdańsk", arrivedPortAt: d("2026-08-26"), customsStatus: "cleared", deliveredAt: d("2026-08-28"), createdBy: U("bogdan"), createdAt: d("2026-07-10"), updatedAt: d("2026-08-28") });
   bump("orders"); bump("order_lines"); bump("purchase_orders"); bump("inspections"); bump("shipments");
 
   const ORD0312 = id(); ids["ORD-2026-0312"] = ORD0312;
@@ -443,13 +457,13 @@ export async function seed() {
   const OL0312 = id();
   await db.insert(A.orderLines).values({ id: OL0312, orderId: ORD0312, requestLineId: LINE("REQ-2026-0312-01"), productId: PRD("PRD-0004"), specVersion: 1, lineNo: 1, qty: 100000, unit: "pcs", unitPriceMinorE2: e2(0.062), feeMinor: minor(540), factoryUnitPriceMinorE2: e2(0.0539), participationId: partId["REQ-2026-0312-01:SUP-0007"] as never, artworkRequired: true, createdAt: d("2026-09-20") });
   for (const [kind, pct, amount, due, paid, ref] of [["deposit", 30, 1860, "2026-09-25", "2026-09-22", "WIRE-0922-A"], ["fee", null, 540, "2026-09-25", "2026-09-22", "WIRE-0922-A"], ["balance", 70, 4340, null, null, null]] as const) {
-    await db.insert(A.payments).values({ id: id(), orgId: PIOTR.id, orderId: ORD0312, kind, pct, amountMinor: minor(amount), currency: "USD", payee: "agency", status: paid ? "paid" : "pending", dueOn: due, paidAt: paid ? d(paid) : null, reference: ref, recordedBy: paid ? U("bogdan") : null, createdBy: U("bogdan"), createdAt: d("2026-09-20"), updatedAt: d(paid ?? "2026-09-20") }); bump("payments");
+    await db.insert(A.payments).values({ id: id(), orgId: PIOTR.id, orderId: ORD0312, kind, pct, amountMinor: minor(amount), currency: "USD", payee: "agency", status: paid ? "paid" : "pending", dueOn: due ? sd(due) : null, paidAt: paid ? d(paid) : null, reference: ref, recordedBy: paid ? U("bogdan") : null, createdBy: U("bogdan"), createdAt: d("2026-09-20"), updatedAt: d(paid ?? "2026-09-20") }); bump("payments");
   }
   const PO0312 = id();
-  await db.insert(S.purchaseOrders).values({ id: PO0312, ref: "PO-2026-0312-01", orgId: PIOTR.id, orderId: ORD0312, supplierId: SUP("SUP-0007"), factoryTotalMinor: minor(5390), currency: "USD", terms: "T/T 30/70", exworksEta: "2026-10-25", status: "in_production", issuedAt: d("2026-09-21"), createdBy: U("bogdan"), createdAt: d("2026-09-20"), updatedAt: d("2026-09-23") });
+  await db.insert(S.purchaseOrders).values({ id: PO0312, ref: "PO-2026-0312-01", orgId: PIOTR.id, orderId: ORD0312, supplierId: SUP("SUP-0007"), factoryTotalMinor: minor(5390), currency: "USD", terms: "T/T 30/70", exworksEta: sd("2026-10-25"), status: "in_production", issuedAt: d("2026-09-21"), createdBy: U("bogdan"), createdAt: d("2026-09-20"), updatedAt: d("2026-09-23") });
   await db.update(A.orderLines).set({ poId: PO0312 as never }).where(eq(A.orderLines.id, OL0312));
-  await db.insert(A.inspections).values({ id: id(), orgId: PIOTR.id, orderId: ORD0312, poId: PO0312 as never, inspector: "Cristina", scheduledFor: "2026-10-22", visibleToClient: false, createdBy: U("bogdan"), createdAt: d("2026-09-23"), updatedAt: d("2026-09-23") });
-  await db.insert(A.shipments).values({ id: id(), orgId: PIOTR.id, orderId: ORD0312, mode: "sea", etaPort: "2026-11-18", portOfDischarge: "Gdańsk", customsStatus: "not_started", createdBy: U("bogdan"), createdAt: d("2026-09-23"), updatedAt: d("2026-09-23") });
+  await db.insert(A.inspections).values({ id: id(), orgId: PIOTR.id, orderId: ORD0312, poId: PO0312 as never, inspector: "Cristina", scheduledFor: sd("2026-10-22"), visibleToClient: false, createdBy: U("bogdan"), createdAt: d("2026-09-23"), updatedAt: d("2026-09-23") });
+  await db.insert(A.shipments).values({ id: id(), orgId: PIOTR.id, orderId: ORD0312, mode: "sea", etaPort: sd("2026-11-18"), portOfDischarge: "Gdańsk", customsStatus: "not_started", createdBy: U("bogdan"), createdAt: d("2026-09-23"), updatedAt: d("2026-09-23") });
   bump("orders"); bump("order_lines"); bump("purchase_orders"); bump("inspections"); bump("shipments");
 
   /* 7.14 documents (placeholder files on disk) + 7.11 factory range */
@@ -473,7 +487,7 @@ export async function seed() {
   }
   await doc("best-prices", { entity: "request_line", entityId: L01, org: PIOTR.id, filename: "Best-prices-sleeves.xlsx", kind: "comparison", visibility: "internal", by: "marko", at: "2026-09-21" });
   await doc("rfq0312", { entity: "request_line", entityId: L01, org: PIOTR.id, filename: "RFQ-0312-v1.pdf", kind: "rfq", visibility: "internal", by: "bogdan", at: "2026-09-05" });
-  await doc("wa-yuantuo", { entity: "request_line", entityId: L01, org: PIOTR.id, filename: "wa-yuantuo-0914.png", kind: "other", visibility: "internal", by: "bogdan", at: "2026-09-14" });
+  await doc("wa-yuantuo", { entity: "request_line", entityId: L01, org: PIOTR.id, filename: `wa-yuantuo-${mmdd("2026-09-14")}.png`, kind: "other", visibility: "internal", by: "bogdan", at: "2026-09-14" });
   await doc("sample-photo-1", { entity: "sample", entityId: ids["SMP-2026-0312-01-1"], org: PIOTR.id, filename: "Sample-photo-1.jpg", kind: "sample_photo", visibility: "client", by: "bogdan", at: "2026-09-18" });
   await doc("sample-photo-2", { entity: "sample", entityId: ids["SMP-2026-0312-01-1"], org: PIOTR.id, filename: "Sample-photo-2.jpg", kind: "sample_photo", visibility: "client", by: "bogdan", at: "2026-09-18" });
   await doc("pi0312", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "PI-ORD-2026-0312.pdf", kind: "pi", visibility: "client", by: "bogdan", at: "2026-09-20", publishedAt: "2026-09-20" });
@@ -481,7 +495,7 @@ export async function seed() {
   await doc("artwork0312", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "Artwork-sleeves-v1.pdf", kind: "artwork", visibility: "client", by: "piotr", at: "2026-09-22" });
   await doc("po0312", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "PO-2026-0312-01.pdf", kind: "other", visibility: "internal", by: "bogdan", at: "2026-09-21" });
   // canary copy on the order: neutral file name (UX review), canary text inside the file (anonymity tests still find it)
-  await doc("zzleak-order", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "quote-2026-09-12-copy.xlsx", kind: "quote_file", visibility: "internal", by: "bogdan", at: "2026-09-21" });
+  await doc("zzleak-order", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: `quote-${sd("2026-09-12")}-copy.xlsx`, kind: "quote_file", visibility: "internal", by: "bogdan", at: "2026-09-21" });
   await db.update(S.purchaseOrders).set({ documentId: docIds.po0312 }).where(eq(S.purchaseOrders.id, PO0312));
   const art0312 = id();
   await db.insert(A.artworks).values({ id: art0312, orgId: PIOTR.id, orderLineId: OL0312, version: 1, fileId: (await db.select({ fileId: A.documents.fileId }).from(A.documents).where(eq(A.documents.id, docIds.artwork0312)))[0].fileId, dielineFileId: (await db.select({ fileId: A.documents.fileId }).from(A.documents).where(eq(A.documents.id, docIds.dieline0312)))[0].fileId, status: "approved", decidedAt: d("2026-09-23"), decidedBy: U("bogdan"), approvedBy: U("bogdan"), createdBy: U("piotr"), createdAt: d("2026-09-22"), updatedAt: d("2026-09-23") });
@@ -490,7 +504,7 @@ export async function seed() {
     await doc(key, { entity: "order", entityId: ORD0290, org: KOFF.id, filename, kind, visibility: "client", by: "bogdan", at: kind === "pi" ? "2026-06-15" : kind === "invoice" ? "2026-07-08" : kind === "qc_report" ? "2026-07-08" : "2026-07-15", publishedAt: kind === "pi" ? "2026-06-15" : kind === "invoice" ? "2026-07-08" : kind === "qc_report" ? "2026-07-08" : "2026-07-15" });
   }
   await doc("po0290", { entity: "order", entityId: ORD0290, org: KOFF.id, filename: "PO-2026-0290-01.pdf", kind: "other", visibility: "internal", by: "bogdan", at: "2026-06-20" });
-  await doc("ecosino-quote", { entity: "order", entityId: ORD0290, org: KOFF.id, filename: "Ecosino-quote-2026-06.xlsx", kind: "quote_file", visibility: "internal", by: "bogdan", at: "2026-06-09" });
+  await doc("ecosino-quote", { entity: "order", entityId: ORD0290, org: KOFF.id, filename: `Ecosino-quote-${sd("2026-06-09").slice(0, 7)}.xlsx`, kind: "quote_file", visibility: "internal", by: "bogdan", at: "2026-06-09" });
   await db.update(A.inspections).set({ reportDocumentId: docIds.qc0290 }).where(eq(A.inspections.id, INSP0290));
   await db.update(A.shipments).set({ blDocumentId: docIds.bl0290, packingListDocumentId: docIds.pl0290 }).where(eq(A.shipments.id, SHIP0290));
   await db.update(S.purchaseOrders).set({ documentId: docIds.po0290 }).where(eq(S.purchaseOrders.id, PO0290));
@@ -509,11 +523,11 @@ export async function seed() {
   bump("factory_ranges");
 
   // supplier price lists / catalogues (internal documents attached to the supplier)
-  const pl17 = await doc("zzleak-pricelist", { entity: "supplier", entityId: SUP("SUP-0017"), org: AGENCY.id, filename: "ZZLEAKTEST-pricelist-2026.pdf", kind: "price_list", visibility: "internal", by: "bogdan", at: "2026-09-12" });
+  const pl17 = await doc("zzleak-pricelist", { entity: "supplier", entityId: SUP("SUP-0017"), org: AGENCY.id, filename: `ZZLEAKTEST-pricelist-${sd("2026-09-12").slice(0, 4)}.pdf`, kind: "price_list", visibility: "internal", by: "bogdan", at: "2026-09-12" });
   await db.insert(S.supplierPriceLists).values({ id: id(), supplierId: SUP("SUP-0017"), documentId: pl17.documentId, receivedAt: d("2026-09-12"), currency: "USD", notes: "ZZLEAKTEST canary price list" });
-  const pl07 = await doc("yuantuo-pricelist", { entity: "supplier", entityId: SUP("SUP-0007"), org: AGENCY.id, filename: "Yuantuo-pricelist-2026.pdf", kind: "price_list", visibility: "internal", by: "bogdan", at: "2026-09-05" });
+  const pl07 = await doc("yuantuo-pricelist", { entity: "supplier", entityId: SUP("SUP-0007"), org: AGENCY.id, filename: `Yuantuo-pricelist-${sd("2026-09-05").slice(0, 4)}.pdf`, kind: "price_list", visibility: "internal", by: "bogdan", at: "2026-09-05" });
   await db.insert(S.supplierPriceLists).values({ id: id(), supplierId: SUP("SUP-0007"), documentId: pl07.documentId, receivedAt: d("2026-09-05"), currency: "USD" });
-  const cat01 = await doc("ecosino-catalogue", { entity: "supplier", entityId: SUP("SUP-0001"), org: AGENCY.id, filename: "Ecosino-catalogue-2026.pdf", kind: "catalogue", visibility: "internal", by: "bogdan", at: "2026-06-03" });
+  const cat01 = await doc("ecosino-catalogue", { entity: "supplier", entityId: SUP("SUP-0001"), org: AGENCY.id, filename: `Ecosino-catalogue-${sd("2026-06-03").slice(0, 4)}.pdf`, kind: "catalogue", visibility: "internal", by: "bogdan", at: "2026-06-03" });
   await db.insert(S.supplierCatalogues).values({ id: id(), supplierId: SUP("SUP-0001"), documentId: cat01.documentId, receivedAt: d("2026-06-03"), currency: "USD" });
   bump("supplier_price_lists", 2); bump("supplier_catalogues");
 
@@ -524,7 +538,7 @@ export async function seed() {
     await logActivity(db, { orgId: p.org, entityType: p.entity, entityId: p.entityId, type: p.source === "whatsapp_log" ? "whatsapp_logged" : "comment_posted", actorId: U(p.by), actorName: NAME[U(p.by)], visibility: p.visibility, at: d(p.at), payload: p.visibility === "client" ? { commentId: cid, kind: p.kind } : { commentId: cid, kind: p.kind, counterparty: p.counterparty ?? null } });
     bump("comments");
   };
-  await comment({ entity: "request_line", entityId: L01, org: PIOTR.id, visibility: "internal", kind: "note", by: "bogdan", at: "2026-09-06", body: "Suti registered 2026-03, 100k capital — do not use" });
+  await comment({ entity: "request_line", entityId: L01, org: PIOTR.id, visibility: "internal", kind: "note", by: "bogdan", at: "2026-09-06", body: `Suti registered ${sd("2026-03-01").slice(0, 7)}, 100k capital — do not use` });
   await comment({ entity: "request_line", entityId: L01, org: PIOTR.id, visibility: "internal", kind: "note", source: "whatsapp_log", by: "bogdan", at: "2026-09-14", counterparty: "Daryl (Yuantuo)", body: "confirmed 0.0539 FOB SZ for 100k, T/T 30/70, 30 days", attachments: [docIds["wa-yuantuo"]] });
   await comment({ entity: "request_line", entityId: L01, org: PIOTR.id, visibility: "internal", kind: "note", by: "bogdan", at: "2026-09-12", body: "ZZLEAKTEST asked for 50 % deposit — parked" });
   await comment({ entity: "request_line", entityId: L01, org: PIOTR.id, visibility: "client", kind: "question", by: "piotr", at: "2026-09-24", body: "Can we get the balance invoice in EUR next time?" });
@@ -590,7 +604,7 @@ export async function seed() {
   // QA-04: one "Order confirmed" item; the invoice is announced when the PI is published (awaiting_deposit)
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "order_confirmed", by: "bogdan", at: "2026-09-20", payload: { ref: "ORD-2026-0312", milestone: "order_confirmed", text: ORDER_CONFIRMED_TEXT } });
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "document_published", by: "bogdan", at: "2026-09-20", time: "11:40", payload: { ref: "ORD-2026-0312", kind: "pi", kindLabel: "Proforma invoice" } });
-  await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "order_confirmed", "awaiting_deposit", "2026-09-20", { feed: true, text: "Invoice PI-ORD-2026-0312 is ready — deposit and fee due 25 Sep 2026" }, "bogdan", "11:41");
+  await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "order_confirmed", "awaiting_deposit", "2026-09-20", { feed: true, text: `Invoice PI-ORD-2026-0312 is ready — deposit and fee due ${fmtDate(sd("2026-09-25"))}` }, "bogdan", "11:41");
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "payment_recorded", by: "bogdan", at: "2026-09-22", payload: { ref: "ORD-2026-0312", kind: "deposit", text: "Deposit received" } });
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "payment_recorded", by: "bogdan", at: "2026-09-22", time: "09:01", payload: { ref: "ORD-2026-0312", kind: "fee", text: "Fee received" } });
   await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "awaiting_deposit", "awaiting_artwork", "2026-09-22", {}, null, "09:02");
@@ -598,7 +612,7 @@ export async function seed() {
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "artwork_decided", by: "bogdan", at: "2026-09-23", payload: { ref: "ORD-2026-0312", decision: "approved", text: "Artwork approved" } });
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "po_updated", by: "bogdan", at: "2026-09-21", visibility: "internal", payload: { ref: "ORD-2026-0312", poRef: "PO-2026-0312-01", supplierName: "Dongguan Yuantuo Packaging Products Co., Ltd.", status: "issued" } });
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "po_updated", by: "bogdan", at: "2026-09-21", time: "09:30", visibility: "internal", payload: { ref: "ORD-2026-0312", note: "Second-source quote (ZZLEAKTEST canary) attached for reference — never publish" } });
-  await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "awaiting_artwork", "in_production", "2026-09-23", { eta: "2026-10-25", text: "In production — ex-works ETA 25 Oct 2026" }, "bogdan", "09:05");
+  await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "awaiting_artwork", "in_production", "2026-09-23", { eta: sd("2026-10-25"), text: `In production — ex-works ETA ${fmtDate(sd("2026-10-25"))}` }, "bogdan", "09:05");
 
   // other REQ-2026-0312 lines (compact histories)
   for (const l of lines.filter((x) => x.req === "REQ-2026-0312" && x.no !== 1)) {
@@ -655,9 +669,9 @@ export async function seed() {
   await ev({ entity: "request_line", entityId: LINE("REQ-2026-0290-01"), org: KOFF.id, type: "offer_decided", by: "anna", at: "2026-06-15", payload: { ref: "REQ-2026-0290-01", offerRef: "OFR-2026-0290-01-v1", decision: "accepted", option: "A", text: "Offer accepted (Option A)" } });
   // ORD-2026-0290 history
   const h0290: [LineState, LineState, string, Record<string, unknown>][] = [
-    ["order_confirmed", "awaiting_deposit", "2026-06-15", { feed: true, text: "Invoice PI-ORD-2026-0290 is ready — deposit and fee due 20 Jun 2026" }], ["awaiting_deposit", "in_production", "2026-06-20", { eta: "2026-07-10" }],
+    ["order_confirmed", "awaiting_deposit", "2026-06-15", { feed: true, text: `Invoice PI-ORD-2026-0290 is ready — deposit and fee due ${fmtDate(sd("2026-06-20"))}` }], ["awaiting_deposit", "in_production", "2026-06-20", { eta: sd("2026-07-10") }],
     ["in_production", "qc_inspection", "2026-07-06", {}], ["qc_inspection", "awaiting_balance", "2026-07-08", {}], ["awaiting_balance", "forwarder_booked", "2026-07-10", {}], ["forwarder_booked", "shipped_exworks", "2026-07-11", {}],
-    ["shipped_exworks", "departed_origin", "2026-07-14", { etd: "2026-07-14", etaPort: "2026-08-26" }], ["departed_origin", "eu_port_customs", "2026-08-26", {}], ["eu_port_customs", "delivered", "2026-08-28", {}],
+    ["shipped_exworks", "departed_origin", "2026-07-14", { etd: sd("2026-07-14"), etaPort: sd("2026-08-26") }], ["departed_origin", "eu_port_customs", "2026-08-26", {}], ["eu_port_customs", "delivered", "2026-08-28", {}],
   ];
   await ev({ entity: "order", entityId: ORD0290, org: KOFF.id, type: "order_confirmed", by: "bogdan", at: "2026-06-15", payload: { ref: "ORD-2026-0290", milestone: "order_confirmed", text: ORDER_CONFIRMED_TEXT } });
   let hour = 10;
@@ -682,7 +696,7 @@ export async function seed() {
     if (r.source !== "agent_on_behalf") for (const c of clientOf(r.org)) await q({ to: c, template: "client_request_received", subject: `We received your request ${r.ref}`, ref: r.ref, url: `/app/requests/${r.ref}`, at: r.submitted!, key: r.ref });
     for (const a of opsAll) await q({ to: a, template: "ops_new_request", subject: `New request ${r.ref} from ${orgName} (${lineCount} lines)`, ref: r.ref, url: `/ops/requests/${r.ref}`, at: r.submitted!, key: r.ref });
   }
-  const milestoneMail = async (org: string, ref: string, name: string, milestone: Milestone, at: string, url: string) => { for (const c of clientOf(org)) await q({ to: c, template: "client_milestone_changed", subject: `${name}: ${milestone.replace(/_/g, " ")}`, ref, url, at, key: `${ref}:${milestone}:${at}`, payload: { name, milestone } }); };
+  const milestoneMail = async (org: string, ref: string, name: string, milestone: Milestone, at: string, url: string) => { for (const c of clientOf(org)) await q({ to: c, template: "client_milestone_changed", subject: `${name}: ${milestone.replace(/_/g, " ")}`, ref, url, at, key: `${ref}:${milestone}:${sd(at)}`, payload: { name, milestone } }); };
   for (const l of lines.filter((x) => x.specV && x.state !== "draft")) await milestoneMail(lineOrg[l.ref], l.ref, l.name, "finding_factory", l.no === 26 ? "2026-09-17" : l.req === "REQ-2026-0312" ? "2026-09-03" : "2026-09-15", `/app/lines/${l.ref}`);
   for (const o of offs) { for (const c of clientOf(lineOrg[o.line])) await q({ to: c, template: "client_offer_ready", subject: `Price ready — ${lines.find((l) => l.ref === o.line)!.name}`, ref: o.ref, url: `/app/offers/${o.ref}`, at: o.sent, key: o.ref }); }
   for (const s of smps) {
@@ -701,7 +715,7 @@ export async function seed() {
   for (const [m, at] of [["in_production", "2026-06-20"], ["quality_check", "2026-07-06"], ["shipping", "2026-07-10"]] as const) await milestoneMail(KOFF.id, "ORD-2026-0290", "Boltless steel shelving 5-tier 180×90×40 black", m, at, "/app/orders/ORD-2026-0290");
   await q({ to: "anna", template: "client_qc_result", subject: "Quality check passed — ORD-2026-0290", ref: "ORD-2026-0290", url: "/app/orders/ORD-2026-0290#qc", at: "2026-07-08", key: "ORD-2026-0290" });
   await q({ to: "anna", template: "client_delivery_confirm", subject: "Delivered — please confirm ORD-2026-0290", ref: "ORD-2026-0290", url: "/app/orders/ORD-2026-0290", at: "2026-08-28", key: "ORD-2026-0290" });
-  for (const [to, ref, at, name] of [["piotr", "REQ-2026-0312-01", "2026-09-23", "Standard sleeves 66×91 mm, 100 µm, PP, 100/bag"], ["piotr", "REQ-2026-0312-05", "2026-09-23", "Team bag 66×91"], ["anna", "REQ-2026-0301-01", "2026-09-26", "Work gloves red latex crinkle, size 10"], ["anna", "ORD-2026-0290", "2026-08-28", "Boltless steel shelving"]] as const) await q({ to, template: "client_new_update", subject: `Update on ${name}`, ref, url: ref.startsWith("ORD") ? `/app/orders/${ref}` : `/app/lines/${ref}`, at, key: `${ref}:${at}` });
+  for (const [to, ref, at, name] of [["piotr", "REQ-2026-0312-01", "2026-09-23", "Standard sleeves 66×91 mm, 100 µm, PP, 100/bag"], ["piotr", "REQ-2026-0312-05", "2026-09-23", "Team bag 66×91"], ["anna", "REQ-2026-0301-01", "2026-09-26", "Work gloves red latex crinkle, size 10"], ["anna", "ORD-2026-0290", "2026-08-28", "Boltless steel shelving"]] as const) await q({ to, template: "client_new_update", subject: `Update on ${name}`, ref, url: ref.startsWith("ORD") ? `/app/orders/${ref}` : `/app/lines/${ref}`, at, key: `${ref}:${sd(at)}` });
   await q({ to: "piotr", template: "client_new_update", subject: "Update on Standard sleeves 66×91 mm, 100 µm, PP, 100/bag", ref: "FR-0001", url: "/app/orders/ORD-2026-0312/range", at: "2026-09-21", key: "FR-0001", payload: { text: "More from this factory is available" } });
   for (const [ref, at, action] of [["OFR-2026-0290-01-v1", "2026-06-15", "accepted option A"], ["OFR-2026-0312-01-v1", "2026-09-08", "accepted option A"], ["OFR-2026-0312-02-v1", "2026-09-19", "accepted option A"], ["SMP-2026-0312-01-1", "2026-09-19", "approved the sample"], ["ORD-2026-0312", "2026-09-22", "wired deposit + fee"]] as const) await q({ to: "bogdan", template: "ops_client_action", subject: `Client: ${action} on ${ref}`, ref, url: "/ops", at, key: `${ref}:${action}` });
   await q({ to: "bogdan", template: "ops_client_question", subject: "Question from Piotr's team on REQ-2026-0312-01", ref: "REQ-2026-0312-01", url: "/ops/lines/REQ-2026-0312-01?tab=timeline", at: "2026-09-24", key: "REQ-2026-0312-01:q1" });
@@ -761,7 +775,7 @@ export async function seed() {
     (await db.select().from(S.suppliers).where(eq(S.suppliers.ref, "SUP-0017"))).length,
     (await db.select().from(S.supplierContacts).where(eq(S.supplierContacts.handle, "zzleaktest_wx"))).length,
     (await db.select().from(S.supplierParticipations).where(eq(S.supplierParticipations.supplierId, SUP("SUP-0017")))).length,
-    (await db.select().from(A.documents).where(eq(A.documents.filename, "quote-2026-09-12-copy.xlsx"))).length,
+    (await db.select().from(A.documents).where(eq(A.documents.filename, `quote-${sd("2026-09-12")}-copy.xlsx`))).length,
     (await db.select().from(A.comments).where(sql`${A.comments.body} ilike ${needle}`)).length,
     (await db.select().from(A.activityEvents).where(sql`${A.activityEvents.payload}::text ilike ${needle}`)).length,
     (await db.select().from(S.supplierPriceLists).where(eq(S.supplierPriceLists.supplierId, SUP("SUP-0017")))).length,
@@ -778,7 +792,7 @@ export async function seed() {
 
   /* summary */
   const ms = Date.now() - t0;
-  console.log("\nInfluensia seed complete (clock 2026-09-28)\n" + "─".repeat(48));
+  console.log(`\nInfluensia seed complete (clock ${sd("2026-09-28")}${SHIFT ? `, shifted ${SHIFT > 0 ? "+" : ""}${SHIFT} d from 2026-09-28` : ""})\n` + "─".repeat(48));
   for (const [k, v] of Object.entries(summary).filter(([k]) => !k.startsWith("_")).sort()) console.log(`${k.padEnd(28)} ${String(v).padStart(6)}`);
   console.log("─".repeat(48));
   console.log(`checks: dashboards ✓ · stale ✓ · counts ✓ · ZZLEAKTEST canary in ${internalPlaces} internal places, 0 client rows ✓ · outbox ${outboxCount} sent → ${OUTBOX_LOG()}`);

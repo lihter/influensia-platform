@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { resetDb } from "./helpers";
+import { resetDb, sdLong } from "./helpers";
 
 /**
  * F-11 catalog, F-12/F-25 ranges, F-21 suppliers, F-24 products — against the seed of SPEC §7.
@@ -31,7 +31,7 @@ test("client catalog: 4 products with reference data, factory range section, no 
   const shelving = page.locator("[data-testid=catalog-card][data-ref=PRD-0001]");
   await expect(shelving).toContainText("Boltless steel shelving 5-tier 180×90×40 black");
   await expect(shelving).toContainText("$8.90");
-  await expect(shelving).toContainText("at 1,000 sets · FOB Qingdao · spec v2 · valid until 31 Dec 2026"); // unitLabel pluralises
+  await expect(shelving).toContainText(`at 1,000 sets · FOB Qingdao · spec v2 · valid until ${sdLong("2026-12-31")}`); // unitLabel pluralises
   await expect(page.locator("[data-testid=catalog-card][data-ref=PRD-0002]")).toContainText("$0.26");
   await expect(page.locator("[data-testid=catalog-card][data-ref=PRD-0003]")).toContainText("$9.90");
   await expect(page.locator("[data-testid=catalog-card][data-ref=PRD-0004]")).toContainText("$0.062");

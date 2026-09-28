@@ -1,7 +1,7 @@
 # Influensia Sourcing Platform: design review
 
 Reviewed 2026-09-28 against `docs/DESIGN.md` v1.0, `docs/BRAND_INPUT.md` and the founder's brief. Production build, port 3202, seeded data in `.data/ux`.
-Screenshots: `docs/ux-shots/` (126 files). `c-*` = client portal, `o-*` = ops workspace, `-d` = 1440×900, `-m` = 390×844. Everything is a full-page capture except the sheets and dialogs, which show the viewport.
+Screenshots: `docs/ux-shots/` (the 66 cited in this review are kept; the full 126-file capture is in git history, commit 599c433). `c-*` = client portal, `o-*` = ops workspace, `-d` = 1440×900, `-m` = 390×844. Everything is a full-page capture except the sheets and dialogs, which show the viewport.
 
 ---
 

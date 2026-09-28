@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
-import { resetDb } from "./helpers";
+import { resetDb, sd, sdLong, sdShort } from "./helpers";
 
 /**
  * Orders + documents (F-10, F-22, F-23) against a fresh seed:
@@ -31,7 +31,7 @@ test("ops orders list shows both seeded orders with amounts and ETA", async ({ p
   await expect(table).toContainText("ORD-2026-0312");
   await expect(table).toContainText("ORD-2026-0290");
   await expect(table).toContainText("$4,340.00"); // balance due on 0312
-  await expect(table).toContainText("18 Nov");    // planned ETA Gdańsk
+  await expect(table).toContainText(sdShort("2026-11-18"));    // planned ETA Gdańsk
   await page.getByTestId("orders-toolbar").getByText("Piotr", { exact: false }).first().click();
   await expect(table).not.toContainText("ORD-2026-0290");
 });
@@ -43,7 +43,7 @@ test("ops order page: AC-OO-01/02, ETA change, publish + leak check, inspection 
   await expect(page.locator("[data-state=in_production]").first()).toBeVisible();
   await expect(page.getByTestId("section-purchase-orders")).toContainText("PO-2026-0312-01");
   await expect(page.getByTestId("section-purchase-orders")).toContainText("$5,390.00");
-  await expect(page.getByTestId("section-purchase-orders")).toContainText("25 Oct 2026");
+  await expect(page.getByTestId("section-purchase-orders")).toContainText(sdLong("2026-10-25"));
   // AC-OO-02
   const pay = page.getByTestId("payments-table");
   await expect(pay.locator("[data-kind=deposit]")).toContainText("WIRE-0922-A");
@@ -51,14 +51,14 @@ test("ops order page: AC-OO-01/02, ETA change, publish + leak check, inspection 
   // AC-DOC-01
   const docs = page.getByTestId("section-documents");
   await expect(docs).toContainText("PI-ORD-2026-0312.pdf");
-  await expect(docs).toContainText("quote-2026-09-12-copy.xlsx");
-  await expect(docs.locator("[data-testid=document-row]", { hasText: "quote-2026-09-12-copy.xlsx" }).getByTestId("publish")).toHaveCount(0);
+  await expect(docs).toContainText(`quote-${sd("2026-09-12")}-copy.xlsx`);
+  await expect(docs.locator("[data-testid=document-row]", { hasText: `quote-${sd("2026-09-12")}-copy.xlsx` }).getByTestId("publish")).toHaveCount(0);
 
   // AC-OO-09: edit PO ETA → eta_changed on the timeline
   await page.getByTestId("edit-eta").click();
-  await page.fill("#exworksEta", "2026-11-12");
+  await page.fill("#exworksEta", sd("2026-11-12"));
   await page.getByRole("button", { name: "Save ETA" }).click();
-  await expect(page.getByTestId("section-purchase-orders")).toContainText("12 Nov 2026", { timeout: 30_000 });
+  await expect(page.getByTestId("section-purchase-orders")).toContainText(sdLong("2026-11-12"), { timeout: 30_000 });
   await expect(page.getByTestId("section-timeline")).toContainText("ETA updated");
 
   // AC-DOC-05: a file named after the canary is blocked on the filename
@@ -114,7 +114,7 @@ test("ops order page: AC-OO-01/02, ETA change, publish + leak check, inspection 
   await page.getByTestId("record-forwarder").click();
   await page.fill("#forwarder", "Rohlig Suus");
   await page.fill("#bookingRef", "RS-2026-11-0001");
-  await page.fill("#cargoReady", "2026-11-13");
+  await page.fill("#cargoReady", sd("2026-11-13"));
   await page.getByRole("button", { name: "Book forwarder" }).click();
   await expect(page.locator("[data-state=forwarder_booked]").first()).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("mark-shipped").click();
@@ -122,11 +122,11 @@ test("ops order page: AC-OO-01/02, ETA change, publish + leak check, inspection 
   await expect(page.locator("[data-state=shipped_exworks]").first()).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("mark-departed").click();
   await page.fill("#containerOrAwb", "MSKU9999001");
-  await page.fill("#etd", "2026-11-16");
-  await page.fill("#etaPort", "2026-12-20");
+  await page.fill("#etd", sd("2026-11-16"));
+  await page.fill("#etaPort", sd("2026-12-20"));
   await page.getByRole("button", { name: "Confirm departure" }).click();
   await expect(page.locator("[data-state=departed_origin]").first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("section-timeline")).toContainText("ETA updated — port 20 Dec 2026");
+  await expect(page.getByTestId("section-timeline")).toContainText(`ETA updated — port ${sdLong("2026-12-20")}`);
   await page.getByTestId("mark-arrived").click();
   await page.getByRole("button", { name: "Mark arrived" }).click();
   await expect(page.locator("[data-state=eu_port_customs]").first()).toBeVisible({ timeout: 30_000 });

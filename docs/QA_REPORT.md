@@ -4,7 +4,7 @@
 **Accounts:** `piotr@example.pl` (client), `buyer@koff.example` (client), `bogdan@influensia.ro` (agent), `marko@influensia.ro` (admin), plus a new client `newbuyer@example.pl` invited during the test.
 
 > The QA dataset at `.data/qa` is now heavily mutated (new requests REQ-2026-0327…0330, order ORD-2026-0301 driven to Delivered, range FR-0002 / Factory F-0043, supplier SUP-0018, client "Nowy Sklep", PRD-0016 published then unpublished). Reseed before reusing it: stop the server, then run `npm run db:seed` with the same env.
-> Screenshots are in `docs/qa-shots/`. Names starting with `piotr_*`, `koff_*`, `*_m_*` come from full crawls (`_m_` = phone). The others are per-step shots named after the step.
+> Screenshots are in `docs/qa-shots/` (only the ones cited below are kept in the tree; the full 399-file capture is in git history, commit 599c433). Names starting with `piotr_*`, `koff_*`, `*_m_*` come from full crawls (`_m_` = phone). The others are per-step shots named after the step.
 
 ## Summary
 

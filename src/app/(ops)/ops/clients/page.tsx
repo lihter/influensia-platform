@@ -1,9 +1,38 @@
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import Link from "next/link";
+import { Settings2 } from "lucide-react";
+import { requireOpsPage, isAdmin } from "@/server/shared/authorize";
+import { listClients } from "@/server/ops/clients";
+import { PageHeader } from "@/components/shared/page-header";
+import { Button } from "@/components/ui/button";
+import { ClientsTable } from "@/components/ops/clients/clients-table";
+import { NewClientSheet } from "@/components/ops/clients/new-client-sheet";
+import { S } from "@/components/ops/clients/strings";
+import { createClientAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Clients" };
 
-/** Placeholder — owned by the feature team (see docs/FOUNDATION.md ownership map). */
-export default function Page() {
-  return <PlaceholderPage ns="ops.clients" />;
+/** F-26 — client organisations. "+ Client" (admin) creates the org and invites its first user in one form. */
+export default async function ClientsPage() {
+  const ctx = await requireOpsPage("/ops/clients");
+  const rows = await listClients(ctx);
+  const admin = isAdmin(ctx);
+  return (
+    <>
+      <PageHeader
+        eyebrow={S.eyebrow}
+        title={S.title}
+        titleSuffix={S.count(rows.length)}
+        actions={
+          admin ? (
+            <>
+              <Button asChild variant="outline"><Link href="/ops/settings"><Settings2 />{S.settingsLink}</Link></Button>
+              <NewClientSheet create={createClientAction} />
+            </>
+          ) : undefined
+        }
+      />
+      <ClientsTable rows={rows} />
+    </>
+  );
 }

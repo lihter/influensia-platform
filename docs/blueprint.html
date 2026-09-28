@@ -1,0 +1,556 @@
+<title>Sourcing Platform Blueprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F2F5F7; --surface:#FFFFFF; --surface2:#E7ECF0; --ink:#15202B; --muted:#5A6B7A; --line:#CBD5DD;
+  --accent:#0E7C86; --accent-ink:#0A5C64; --accent-tint:#D8EDEF;
+  --warn:#A96D12; --warn-tint:#F7EBD3; --danger:#B03A3A; --danger-tint:#F6DEDE;
+  --internal:#E3E8EC; --client:#D8EDEF;
+  --font-display:"Archivo",system-ui,Helvetica,Arial,sans-serif;
+  --font-body:"Source Sans 3","Source Sans Pro",system-ui,Helvetica,Arial,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:4px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1317; --surface:#151B21; --surface2:#1E262E; --ink:#E4EAF0; --muted:#98A8B6; --line:#2C3843;
+    --accent:#4EC3CC; --accent-ink:#8ADDE3; --accent-tint:#10383D;
+    --warn:#E2AC4E; --warn-tint:#3A2C12; --danger:#E27070; --danger-tint:#40201F;
+    --internal:#232D36; --client:#10383D;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1317; --surface:#151B21; --surface2:#1E262E; --ink:#E4EAF0; --muted:#98A8B6; --line:#2C3843;
+  --accent:#4EC3CC; --accent-ink:#8ADDE3; --accent-tint:#10383D;
+  --warn:#E2AC4E; --warn-tint:#3A2C12; --danger:#E27070; --danger-tint:#40201F;
+  --internal:#232D36; --client:#10383D;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding-block:0 64px;padding-inline:20px}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,4.5vw,42px);font-weight:700;letter-spacing:-0.01em;line-height:1.1}
+h2{font-size:22px;font-weight:600;letter-spacing:-0.005em;margin-bottom:4px}
+h3{font-size:16px;font-weight:600}
+p{margin:0}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)}
+.lede{font-size:18px;max-width:64ch}
+.muted{color:var(--muted)}
+.mono{font-family:var(--font-mono);font-size:0.9em}
+code{font-family:var(--font-mono);font-size:0.85em;background:var(--surface2);padding:1px 5px;border-radius:3px}
+a{color:var(--accent-ink);text-decoration-thickness:1px;text-underline-offset:2px}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header.top{padding-block:40px 20px;border-bottom:1px solid var(--line);display:grid;gap:12px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:14px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:600}
+.status{display:inline-block;font-family:var(--font-mono);font-size:11px;letter-spacing:0.06em;padding:2px 8px;border:1px solid var(--accent);color:var(--accent-ink);border-radius:999px}
+nav.toc{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);margin-inline:-20px;padding-inline:20px}
+nav.toc ul{list-style:none;margin:0;padding:0;display:flex;gap:2px 18px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+nav.toc ul::-webkit-scrollbar{display:none}
+nav.toc a{display:inline-block;padding:10px 0;font-family:var(--font-display);font-size:13px;font-weight:600;color:var(--muted);text-decoration:none}
+nav.toc a:hover{color:var(--ink)}
+section{padding-block:36px 8px;scroll-margin-top:56px}
+section > .eyebrow{margin-bottom:6px}
+.stack{display:grid;gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:20px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;display:grid;gap:2px}
+.tile .n{font-family:var(--font-display);font-size:30px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.tile .l{font-size:13px;color:var(--muted)}
+.tablewrap{overflow-x:auto;margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:15px;background:var(--surface);border:1px solid var(--line)}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-family:var(--font-display);font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);background:var(--surface2);font-weight:600}
+tr:last-child td{border-bottom:none}
+td.k{font-weight:600;white-space:nowrap}
+td.c{font-family:var(--font-mono);font-size:12.5px;white-space:nowrap;color:var(--accent-ink)}
+td.f{font-family:var(--font-mono);font-size:12.5px;line-height:1.45}
+tr.grp td{background:var(--surface2);font-family:var(--font-display);font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.rev{display:inline-block;font-family:var(--font-mono);font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.rev.hard{border-color:var(--warn);color:var(--warn)}
+.yes{color:var(--accent-ink);font-weight:600}
+.no{color:var(--danger);font-weight:600}
+figure{margin:16px 0 0;display:grid;gap:8px}
+figure .fig{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+figure svg{display:block;min-width:640px;max-width:100%;height:auto;font-family:var(--font-body);color:var(--ink)}
+figcaption{font-size:14px;color:var(--muted);max-width:80ch}
+.bx-client{fill:var(--client);stroke:var(--accent);stroke-width:1.4}
+.bx-int{fill:var(--internal);stroke:var(--muted);stroke-width:1.2}
+.bx-us{fill:var(--accent-tint);stroke:var(--accent);stroke-width:1.4}
+.bx-frame{fill:var(--surface);stroke:var(--muted);stroke-width:1.2}
+.bx-bar{fill:var(--surface2);stroke:none}
+.bx-strip{fill:var(--surface);stroke:var(--line);stroke-width:1}
+.bx-drop{fill:var(--surface);stroke:var(--accent);stroke-width:1.2;stroke-dasharray:5 4}
+.bx-btn{fill:var(--accent);stroke:none}
+.bx-cont{fill:none;stroke:var(--line);stroke-width:1.4;stroke-dasharray:6 4}
+.t{fill:currentColor;font-size:12.5px;font-weight:600}
+.tc{fill:currentColor;font-size:11px}
+.tb{fill:currentColor;font-size:11px;font-weight:600}
+.ts{fill:var(--muted);font-size:11px}
+.tl{fill:var(--muted);font-size:11px;font-family:var(--font-mono);letter-spacing:0.06em}
+.ta{fill:var(--accent-ink);font-size:11px;font-weight:600}
+.tw{fill:var(--danger);font-size:11px;font-weight:600}
+.tbtn{fill:#fff;font-size:11px;font-weight:600}
+.ln{stroke:currentColor;stroke-width:1.3;fill:none}
+.ln-acc{stroke:var(--accent);stroke-width:1.6;fill:none}
+.ln-base{stroke:var(--line);stroke-width:2;fill:none}
+.wall{stroke:var(--danger);stroke-width:1.6;stroke-dasharray:7 5;fill:none}
+.mk path{fill:currentColor}
+.mk-acc path{fill:var(--accent)}
+.dot-done{fill:var(--accent)}
+.dot-todo{fill:var(--surface);stroke:var(--muted);stroke-width:1.2}
+ul.plain{margin:10px 0 0;padding-left:18px;display:grid;gap:6px}
+ul.plain li::marker{color:var(--muted)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:14px}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.col h3{margin-bottom:8px}
+.col ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.col li{display:grid;gap:1px;font-size:15px;padding:6px 0;border-top:1px solid var(--line)}
+.col li:first-child{border-top:none}
+.col li b{font-weight:600}
+.col li span{font-size:13.5px;color:var(--muted)}
+.callout{background:var(--accent-tint);border:1px solid var(--accent);border-radius:var(--radius);padding:14px 16px;display:grid;gap:6px}
+.callout.warn{background:var(--warn-tint);border-color:var(--warn)}
+.callout.danger{background:var(--danger-tint);border-color:var(--danger)}
+.callout h3{font-size:14px;letter-spacing:0.04em;text-transform:uppercase}
+.conf{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}
+.conf .c{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;display:grid;gap:4px}
+.conf .pct{font-family:var(--font-display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.conf .what{font-size:14px}
+.qs{display:grid;gap:8px;margin-top:14px}
+.q{display:grid;grid-template-columns:44px 1fr;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);font-size:15px}
+.q .c{font-family:var(--font-mono);font-size:12px;color:var(--warn);padding-top:3px}
+.q .d{display:block;font-size:13.5px;color:var(--accent-ink);margin-top:2px}
+.q .d::before{content:"default if unanswered · ";font-family:var(--font-mono);font-size:11px}
+footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);display:grid;gap:6px}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Influensia · sourcing platform · v1 build decisions</div>
+  <h1>Sourcing Platform Blueprint</h1>
+  <p class="lede">Decisions made so the build can start: what v1 is, what it is not, the stack, the data model, how the factory stays invisible in code, how the Sourcing Tracker sheet moves in, and a four-week plan. Every decision has a code — reply with the code to override it.</p>
+  <div class="meta"><span>Version <b>v1.0</b></span><span>Date <b>22 Sep 2026</b></span><span>Decided by <b>Claude, staff-engineer stance, on Marko's brief and four answers</b></span><span class="status">READY TO BUILD ON APPROVAL</span></div>
+</header>
+
+<nav class="toc" aria-label="Sections">
+  <ul>
+    <li><a href="#answers">Your answers</a></li>
+    <li><a href="#principles">Principles</a></li>
+    <li><a href="#product">Product decisions</a></li>
+    <li><a href="#stack">Stack</a></li>
+    <li><a href="#arch">Architecture</a></li>
+    <li><a href="#data">Data model</a></li>
+    <li><a href="#anon">Anonymity in code</a></li>
+    <li><a href="#ux">UX</a></li>
+    <li><a href="#sheet">Sheet migration</a></li>
+    <li><a href="#plan">Plan</a></li>
+    <li><a href="#open">Open questions</a></li>
+  </ul>
+</nav>
+
+<div class="tiles" aria-label="At a glance">
+  <div class="tile"><span class="n">23</span><span class="l">product decisions, D-01 to D-23</span></div>
+  <div class="tile"><span class="n">14</span><span class="l">stack decisions, T-01 to T-14</span></div>
+  <div class="tile"><span class="n">36</span><span class="l">tables in the v1 schema</span></div>
+  <div class="tile"><span class="n">4 wk</span><span class="l">to go-live with the first client, solo + Claude Code</span></div>
+</div>
+
+<section id="answers">
+  <div class="eyebrow">01 · Your four answers, and the two conflicts they created</div>
+  <h2>What was decided today and what it collides with</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Answer (22 Sep)</th><th>Consequence</th></tr></thead>
+    <tbody>
+      <tr><td class="k">First client: agency mode</td><td>They pay the factory price plus our fee. The invoice must show two numbers. Whether they wire the factory or wire us decides whether the factory is disclosed on their order — see the conflict below.</td></tr>
+      <tr><td class="k">English only, strings externalised</td><td>One messages file from day one; Polish is a translation job later, not a rewrite.</td></tr>
+      <tr><td class="k">WhatsApp: status only</td><td>The platform must make status questions unnecessary on its own — milestones, ETAs, actions and documents have to be complete, because there is no chat to fall back on. See the second conflict.</td></tr>
+      <tr><td class="k">Sheet import: live lines + all suppliers</td><td>An import script is part of week 4; the mapping is in section 09.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="stack" style="margin-top:16px">
+    <div class="callout danger"><h3>Conflict 1 — agency mode vs "the client never sees the factory"</h3><p>If the client wires the deposit to the factory's bank account, the factory's registered name is on their bank statement on day one; no amount of front-end code hides it. Resolution taken (D-10): agency with <b>pass-through payments</b> — the client wires factory price + fee to us, we pay the factory. The fee is visible, the factory is not. If the client insists on paying the factory directly, the platform records <code>agency_direct</code> and stops pretending; anonymity then holds only in the catalog.</p></div>
+    <div class="callout warn"><h3>Conflict 2 — "status only" vs "never messaged on WhatsApp again"</h3><p>Status-only means conversations stay on WhatsApp, so the platform cannot stop all messages — only the ones that ask <i>where is my order</i>, <i>when does it arrive</i>, <i>what do you need from me</i>. Those are the majority and they are killed by milestones + ETAs + an actions queue + email on every change. Resolution taken (D-08): no chat in v1, but every order has an Updates feed the agent writes to, an "ask about this order" box that emails the agent and lands on the timeline, and a way for agents to log a WhatsApp exchange onto the order — so the record is complete even though the channel is not. If status questions keep arriving after four weeks, in-app messaging is the first v1.1 item.</p></div>
+  </div>
+</section>
+
+<section id="principles">
+  <div class="eyebrow">02 · Principles</div>
+  <h2>Six rules the decisions follow</h2>
+  <ul class="plain">
+    <li><b>Same effort as WhatsApp for the client.</b> A new request is a pasted link and a quantity. Everything else is our job.</li>
+    <li><b>Actions first.</b> The first thing a client sees is what is waiting on them; the first thing an agent sees is what is stale or waiting on us.</li>
+    <li><b>One page per order that holds everything.</b> Milestone, ETA, money, documents, updates, history of the same product. Agents and clients look at the same object, with different fields.</li>
+    <li><b>The factory is invisible by construction.</b> Client code paths cannot reach supplier tables; publishing anything to a client is an explicit action that runs a leak check.</li>
+    <li><b>Foundation for many clients, UI for one.</b> Organisations, memberships, roles and audit exist in the schema from day one; the client never sees the word "organisation".</li>
+    <li><b>Boring, current, hosted.</b> Next.js 16, Postgres, one ORM, one auth library, one email provider, no queue vendor, no self-hosting. Fewer moving parts than the automation stack already planned.</li>
+  </ul>
+</section>
+
+<section id="product">
+  <div class="eyebrow">03 · Product decisions</div>
+  <h2>What v1 is</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Code</th><th>Decision</th><th>Why</th><th>Reversal</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="4">Shape</td></tr>
+      <tr><td class="c">D-01</td><td>One codebase, two doors: <code>/app</code> for clients, <code>/ops</code> for agents and admin. Role decides which door opens.</td><td>One model, one deploy, shared components; the ops view is the client view plus internal panels.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-02</td><td>Accounts are invite-only. Admin creates a client user (email + temporary password); email + password login; reset by email; 30-day sessions. No OAuth.</td><td>Matches the brief. Adding Google later is a day with the chosen auth library.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-03</td><td><code>organizations</code> and <code>memberships</code> exist from day one. Inviting a client user auto-creates their organisation; the UI never shows it. The agency is one organisation whose members are agents and admins.</td><td>Cheap now, painful to retrofit: every order, document and message is scoped by org from the first row.</td><td><span class="rev hard">retrofit is costly</span></td></tr>
+      <tr><td class="c">D-04</td><td>Intake is "paste and go": links (one per line) or photos, a quantity per line, an optional note. Nothing else is required. Agents complete the spec. An xlsx import handles lists like Order 312, and agents can create a request on a client's behalf (source = WhatsApp).</td><td>Same effort as a WhatsApp message. The completeness gate applies to the agent's spec freeze, not to the client.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-05</td><td>Nine client milestones with plain names — Received · Finding factory · Price ready ▲ · Sample ▲ · Order confirmed ▲ · In production · Quality check ▲ · Shipping · Delivered ▲ — over the 24 internal states. Each internal state maps to exactly one milestone; a milestone change sends an email.</td><td>Bogdan's instinct (few states for the client) plus the three that carry an ETA or an action.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-06</td><td>Every ▲ milestone has one button on the order page and one card on the dashboard: Accept price · Approve sample · View invoice / upload artwork · View QC report · Confirm delivery.</td><td>Removes the "what do you need from me" message.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-07</td><td>The order page is the single source: milestone stepper, facts (qty, price, ETA), actions, Updates, Documents, History. Requests and orders share the page; the stepper just grows.</td><td>Agents asked to see everything about an order in one place; clients get the same page minus internal panels.</td><td><span class="rev">easy</span></td></tr>
+      <tr class="grp"><td colspan="4">Communication and notifications</td></tr>
+      <tr><td class="c">D-08</td><td>No chat in v1. Per order: an <b>Updates</b> feed (milestone changes + agent notes flagged client-visible), an <b>"Ask about this order"</b> box that emails the assigned agent and lands on the timeline, and <b>Log WhatsApp</b> for agents (paste text or a screenshot onto the order). Internal notes are a separate visibility.</td><td>Honours the status-only answer, keeps the record complete for agents, costs one table. In-app messaging is the first v1.1 item if status questions persist.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-09</td><td>Email only (Resend). Client events: milestone change, action needed, ETA change, new update. Agent events: new request, client action taken, daily digest of stale states and items waiting on us. Action-needed emails cannot be muted.</td><td>Email is universal and cheap; WhatsApp Business API is a v1.1 channel behind the same outbox.</td><td><span class="rev">easy</span></td></tr>
+      <tr class="grp"><td colspan="4">Money</td></tr>
+      <tr><td class="c">D-10</td><td><code>commercial_mode</code> per client, overridable per order: <code>principal</code> · <code>agency_passthrough</code> · <code>agency_direct</code>. First client defaults to <b>agency_passthrough</b>: they wire factory price + fee to us, we pay the factory.</td><td>Only mode that gives a visible fee and an invisible factory at the same time. Needs confirmation of where the money actually lands (Q3).</td><td><span class="rev">per client</span></td></tr>
+      <tr><td class="c">D-11</td><td><code>pricing_display</code> per client: <code>all_in</code> or <code>factory_plus_fee</code>. First client = factory_plus_fee. The catalog always shows all-in.</td><td>Reconciles the 21 Sep "all-in" decision with today's agency answer: both exist, one per client.</td><td><span class="rev">per client</span></td></tr>
+      <tr><td class="c">D-12</td><td>Payments are recorded, not processed: milestones (deposit, fee, balance, sample), an agent marks paid with a reference, the client sees due and paid. No Stripe.</td><td>B2B wires; a gateway adds fees and scope for nothing.</td><td><span class="rev">easy</span></td></tr>
+      <tr class="grp"><td colspan="4">Sourcing and anonymity</td></tr>
+      <tr><td class="c">D-13</td><td>The <b>Sourcing board</b> replaces the sheet: one row per supplier per request line, the seven sheet columns become fields, the "Other" column becomes notes plus structured MOQ, price breaks, terms, lead time, validity; status per supplier; a compare view computed from quotes.</td><td>The sheet already has the right rows; it lacks structure and status. Section 09 has the column mapping.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-14</td><td>Factory anonymity is enforced in code and tests, not by omitting a column in the UI. Section 07 lists the nine mechanisms.</td><td>Requirement is absolute; a UI toggle is one refactor away from a leak.</td><td><span class="rev hard">foundation</span></td></tr>
+      <tr><td class="c">D-15</td><td><b>Factory range</b>: after a supplier is selected, an admin uploads the already-sanitised PDF and enters the items; the client sees "Factory F-0042" and the items, never a supplier id. Selecting items creates request lines pre-linked to that supplier.</td><td>Bogdan's cross-sell step, with the label generated by the platform and the file gated behind an explicit publish.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-16</td><td>Catalog v1 = list of published products with a reference price (at MOQ, incoterm, spec version, valid until) and a "Request offer" button that pre-fills a request. "Proposed by us" is v1.1.</td><td>Validates the resale hypothesis with a list before any marketplace code.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-17</td><td>Samples are their own object with in-app approve / reject and photos; cost and courier recorded.</td><td>Bogdan's default step; a client action that must not live on WhatsApp.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-18</td><td>Reorder: one button on any delivered order creates a new request flagged repeat; if the selected supplier's last quote is still valid the line skips sourcing and goes straight to an offer.</td><td>Repeat business with zero client effort is the point of the catalog.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-19</td><td>History panels: on every request and order, "this client ordered this product before" (client-visible) and "other clients' orders of this product" (ops only).</td><td>Marko's requirement; comes free from products being a hub.</td><td><span class="rev">easy</span></td></tr>
+      <tr class="grp"><td colspan="4">Content and data</td></tr>
+      <tr><td class="c">D-20</td><td>English UI; every string in <code>messages/en.json</code> via next-intl.</td><td>Your answer; translation later is mechanical.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-21</td><td>Money in integer minor units with a currency code. Quotes keep the original currency and a USD-normalised value with the FX rate and date. Client prices in USD (FOB) in v1; EUR display v1.1.</td><td>Matches how factories quote and how the sheet already normalises.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-22</td><td>Documents live in object storage with a visibility flag and a kind (PI, invoice, QC report, B/L, packing list, certificate, artwork, reference image, price list, catalogue). Clients upload reference images and artwork; agents upload everything else.</td><td>Visibility on the row, not on the bucket, is what the leak check needs.</td><td><span class="rev">easy</span></td></tr>
+      <tr><td class="c">D-23</td><td>Sheet migration: suppliers deduped by normalised company name; each product tab becomes a request with one line and one participation row per supplier; master-index statuses map to states; best-price tabs are attached as files. Imported lines belong to the KOFF organisation unless told otherwise (Q4).</td><td>Your "live lines + all suppliers" answer.</td><td><span class="rev">one-off</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="margin-top:12px;max-width:80ch"><b>Not in v1:</b> in-app chat, proposed-by-us, landed-cost estimates, WhatsApp notifications, organisation management UI, payment processing, supplier-facing anything, Polish UI, a public catalog, multi-currency display.</p>
+</section>
+
+<section id="stack">
+  <div class="eyebrow">04 · Stack</div>
+  <h2>2026 stack, chosen for maintenance by one person</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Code</th><th>Role</th><th>Choice</th><th>Why, and the alternative considered</th></tr></thead>
+    <tbody>
+      <tr><td class="c">T-01</td><td class="k">Framework</td><td>Next.js 16.3 (App Router), React 19, TypeScript 7, deployed on Vercel, region Frankfurt</td><td>Server components and server actions cover the whole app without a separate API layer; 16.3 is current as of Aug 2026 ([release notes](https://nextjs.org/blog/next-16-3)). Alternative: TanStack Start — fine, smaller hiring pool.</td></tr>
+      <tr><td class="c">T-02</td><td class="k">Database</td><td>PostgreSQL on Neon (Frankfurt) · Drizzle ORM + drizzle-kit migrations · two schemas: <code>app</code> and <code>supplier</code></td><td>Postgres is the only sane choice for a relational, multi-tenant system; Neon gives branches per preview deploy. Drizzle stays close to SQL and generates types. Alternative: Supabase (bundles auth + storage, but couples authorisation to SQL policies that are hard to test); Prisma (fine, heavier).</td></tr>
+      <tr><td class="c">T-03</td><td class="k">Auth</td><td>Better Auth 1.7 with the Drizzle adapter · email + password · organization plugin enabled but not exposed in the UI</td><td>Own tables, TypeScript-first, and the org plugin is exactly the "prepare the backend, hide it" you asked for ([docs](https://better-auth.com/docs/adapters/drizzle), [changelog](https://better-auth.com/changelog)). Alternative: Auth.js — weaker on orgs.</td></tr>
+      <tr><td class="c">T-04</td><td class="k">UI</td><td>Tailwind CSS 4 · shadcn/ui · TanStack Table (boards) · TanStack Query (client state) · react-hook-form + zod · Lucide icons · next-themes</td><td>The fastest route to a UI that looks designed; shadcn components are owned code, not a dependency.</td></tr>
+      <tr><td class="c">T-05</td><td class="k">Files</td><td>Cloudflare R2 (S3 API) · presigned upload and download · keys <code>org/{orgId}/{entity}/{id}/{client|internal}/{uuid}</code> · images re-encoded with sharp on upload (strips EXIF)</td><td>No egress fees, you already run Cloudflare, and the key prefix is the anonymity boundary for files.</td></tr>
+      <tr><td class="c">T-06</td><td class="k">Email</td><td>Resend + React Email templates, sending domain to be chosen (Q2)</td><td>Reliable transactional email with a good DX; templates render from client DTOs only.</td></tr>
+      <tr><td class="c">T-07</td><td class="k">Background work</td><td>Transactional outbox table + Vercel Cron every minute · retries with backoff · idempotency keys</td><td>Emails, digests and stale alerts do not justify a queue vendor. Add Inngest only when a job needs fan-out or long steps.</td></tr>
+      <tr><td class="c">T-08</td><td class="k">Observability</td><td>Sentry (errors, traces) · Vercel logs · <code>activity_events</code> as the business audit log</td><td>Enough to debug a client complaint from the order page.</td></tr>
+      <tr><td class="c">T-09</td><td class="k">Testing and CI</td><td>Vitest (DTO allowlists, state machine, pricing) · Playwright (intake, offer accept, anonymity crawl) · GitHub Actions · Neon branch + Vercel preview per PR</td><td>The anonymity crawl is the one test that must never be skipped.</td></tr>
+      <tr><td class="c">T-10</td><td class="k">API for automations</td><td>Route handlers under <code>/api/v1</code>, zod-validated, API keys per service account, OpenAPI generated from the schemas</td><td>The poller, the RFQ generator and the quote extractor stay in Python and write through the API, never into the database.</td></tr>
+      <tr><td class="c">T-11</td><td class="k">Conventions</td><td>UUIDv7 primary keys + human refs (REQ-2026-0312) · timestamps in UTC · soft delete · <code>org_id</code>, <code>created_by</code>, <code>created_at</code>, <code>updated_at</code> on every tenant table</td><td>Sortable ids, readable refs, and a tenancy column you cannot forget.</td></tr>
+      <tr><td class="c">T-12</td><td class="k">Authorisation</td><td>One <code>authorize(ctx)</code> helper resolving user → org → role; every query goes through a scoped repository; no raw <code>db</code> in route code</td><td>Application-level, testable, and the same in server actions and API routes.</td></tr>
+      <tr><td class="c">T-13</td><td class="k">Repo</td><td>Single Next.js repo, <code>src/server/{client,ops,shared}</code> split, Claude Code as pair; no monorepo yet</td><td>Monorepo when a second deployable exists.</td></tr>
+      <tr><td class="c">T-14</td><td class="k">Environments</td><td>dev (local + Neon branch) · preview (per PR) · production; secrets in Vercel; seed script with a fake supplier named for the leak test</td><td>Previews with real schema branches make client demos safe.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="arch">
+  <div class="eyebrow">05 · Architecture</div>
+  <h2>One app, one database, three services</h2>
+  <figure>
+    <div class="fig">
+    <svg viewBox="0 0 960 430" role="img" aria-label="Client app and ops app in browsers call one Next.js application on Vercel, which has a client query module that can only reach the app schema and an ops query module that reaches app and supplier schemas, separated by the anonymity boundary; the app uses Postgres on Neon, Cloudflare R2 for files, Resend for email and Sentry; Python automations call the versioned API with a service key.">
+      <defs>
+        <marker id="a1" class="mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+        <marker id="a2" class="mk-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <text class="tl" x="20" y="50">BROWSERS</text>
+      <rect class="bx-client" x="20" y="70" width="150" height="50" rx="4"/><text class="t" x="95" y="91" text-anchor="middle">Client app · /app</text><text class="ts" x="95" y="108" text-anchor="middle">one user per company</text>
+      <rect class="bx-int" x="20" y="150" width="150" height="50" rx="4"/><text class="t" x="95" y="171" text-anchor="middle">Ops app · /ops</text><text class="ts" x="95" y="188" text-anchor="middle">agents · admin</text>
+      <text class="tl" x="20" y="290">MARKO'S PC</text>
+      <rect class="bx-int" x="20" y="300" width="150" height="60" rx="4"/><text class="t" x="95" y="322" text-anchor="middle">Automations · Python</text><text class="ts" x="95" y="338" text-anchor="middle">poller · RFQ generator</text><text class="ts" x="95" y="352" text-anchor="middle">quote extraction</text>
+      <rect class="bx-cont" x="210" y="40" width="430" height="370" rx="6"/>
+      <text class="t" x="225" y="60">Next.js 16 · React 19 · TypeScript · Vercel (Frankfurt)</text>
+      <rect class="bx-strip" x="225" y="72" width="400" height="30" rx="3"/><text class="tc" x="425" y="91" text-anchor="middle">UI: Tailwind 4 · shadcn/ui · TanStack Table · next-intl</text>
+      <rect class="bx-strip" x="225" y="112" width="400" height="30" rx="3"/><text class="tc" x="425" y="131" text-anchor="middle">Server Actions · Route Handlers /api/v1 (zod, API keys)</text>
+      <rect class="bx-client" x="225" y="160" width="190" height="70" rx="4"/><text class="tb" x="320" y="184" text-anchor="middle">server/client</text><text class="ts" x="320" y="200" text-anchor="middle">queries + DTO allowlists</text><text class="ts" x="320" y="215" text-anchor="middle">reaches app schema only</text>
+      <line class="wall" x1="425" y1="152" x2="425" y2="238"/>
+      <rect class="bx-int" x="435" y="160" width="190" height="70" rx="4"/><text class="tb" x="530" y="184" text-anchor="middle">server/ops</text><text class="ts" x="530" y="200" text-anchor="middle">queries + DTOs</text><text class="ts" x="530" y="215" text-anchor="middle">reaches app + supplier schemas</text>
+      <rect class="bx-strip" x="225" y="250" width="400" height="30" rx="3"/><text class="tc" x="425" y="269" text-anchor="middle">Better Auth (email + password, orgs hidden) · authorize(ctx) → org, role</text>
+      <rect class="bx-strip" x="225" y="290" width="400" height="30" rx="3"/><text class="tc" x="425" y="309" text-anchor="middle">Outbox worker (cron, 1 min): emails · digests · stale-state alerts</text>
+      <rect class="bx-strip" x="225" y="330" width="400" height="30" rx="3"/><text class="tc" x="425" y="349" text-anchor="middle">activity_events written on every mutation · leak check on every publish</text>
+      <text class="ts" x="425" y="395" text-anchor="middle">every query scoped by org_id · no raw db access from routes</text>
+      <line class="ln" x1="170" y1="95" x2="208" y2="95" marker-end="url(#a1)"/>
+      <line class="ln" x1="170" y1="175" x2="208" y2="175" marker-end="url(#a1)"/>
+      <line class="ln" x1="170" y1="330" x2="208" y2="330" marker-end="url(#a1)"/>
+      <text class="ts" x="189" y="322" text-anchor="middle">API key</text>
+      <text class="tl" x="680" y="50">SERVICES</text>
+      <rect class="bx-int" x="680" y="70" width="260" height="56" rx="4"/><text class="t" x="810" y="92" text-anchor="middle">Postgres · Neon (Frankfurt)</text><text class="ts" x="810" y="110" text-anchor="middle">schemas app + supplier · Drizzle migrations</text>
+      <rect class="bx-int" x="680" y="150" width="260" height="56" rx="4"/><text class="t" x="810" y="172" text-anchor="middle">Files · Cloudflare R2</text><text class="ts" x="810" y="190" text-anchor="middle">org/entity/id/{client|internal}/… · presigned URLs</text>
+      <rect class="bx-int" x="680" y="230" width="260" height="56" rx="4"/><text class="t" x="810" y="252" text-anchor="middle">Email · Resend</text><text class="ts" x="810" y="270" text-anchor="middle">React Email templates from client DTOs</text>
+      <rect class="bx-int" x="680" y="310" width="260" height="56" rx="4"/><text class="t" x="810" y="332" text-anchor="middle">Sentry · Vercel logs</text><text class="ts" x="810" y="350" text-anchor="middle">errors, traces, request logs</text>
+      <line class="ln-acc" x1="640" y1="98" x2="678" y2="98" marker-end="url(#a2)"/>
+      <line class="ln" x1="640" y1="178" x2="678" y2="178" marker-end="url(#a1)"/>
+      <line class="ln" x1="640" y1="258" x2="678" y2="258" marker-end="url(#a1)"/>
+      <line class="ln" x1="640" y1="338" x2="678" y2="338" marker-end="url(#a1)"/>
+    </svg>
+    </div>
+    <figcaption>The dashed red line inside the app is the anonymity boundary as code: <code>server/client</code> is the only module the client routes may import, and it cannot import the supplier schema. Automations never touch the database directly.</figcaption>
+  </figure>
+</section>
+
+<section id="data">
+  <div class="eyebrow">06 · Data model</div>
+  <h2>Thirty-six tables under the five entities</h2>
+  <p class="muted" style="max-width:76ch">Every tenant table carries <code>org_id, created_by, created_at, updated_at, deleted_at</code>; omitted below. Tables in the <code>supplier</code> schema are marked; nothing in <code>server/client</code> can select from them.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Table</th><th>Key columns</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="3">Tenancy and access (app schema)</td></tr>
+      <tr><td class="k">organizations</td><td class="f">id, type (agency|client|partner), name, country, vat_id, language, currency_display, default_incoterm, commercial_mode, pricing_display, partner_org_id?</td><td>One per client; created on invite. <code>partner_org_id</code> is the KOFF hook, unused in v1.</td></tr>
+      <tr><td class="k">users · memberships</td><td class="f">users: id, email, name, last_seen_at · memberships: user_id, org_id, role (admin|agent|client_owner|client_member)</td><td>Better Auth owns users/sessions/accounts; memberships is one row per user in v1.</td></tr>
+      <tr><td class="k">api_keys</td><td class="f">id, org_id, name, key_hash, scopes[], last_used_at</td><td>Service accounts for the automations.</td></tr>
+      <tr class="grp"><td colspan="3">Products</td></tr>
+      <tr><td class="k">products</td><td class="f">id, ref (PRD-0041), owner_org_id, name, category, description, hs_code, visibility (private|catalog|proposed), reference_price_minor, reference_currency, reference_moq, reference_incoterm, reference_port, reference_spec_version, reference_valid_until, published_at</td><td>The hub. A catalog item is a product with visibility=catalog.</td></tr>
+      <tr><td class="k">product_specs</td><td class="f">id, product_id, version, fields (jsonb), frozen_at, frozen_by</td><td>Spec lock = a new frozen version.</td></tr>
+      <tr><td class="k">product_images</td><td class="f">id, product_id, file_id, kind (client_reference|supplier_facing|clean), approved_by</td><td>Only <code>clean</code> images ever reach a client.</td></tr>
+      <tr class="grp"><td colspan="3">Requests and sourcing</td></tr>
+      <tr><td class="k">requests</td><td class="f">id, ref (REQ-2026-0312), org_id, created_by, source (portal|import|agent_on_behalf), status, submitted_at, target_delivery, destination, incoterm_wanted, notes</td><td></td></tr>
+      <tr><td class="k">request_lines</td><td class="f">id, request_id, line_no, product_id, name, qty_first, reorder_interval, volume_12m, customisation, materials, client_links[], state (24), milestone (9), spec_version, cost_model (jsonb), uplift_pct, target_price_minor, target_confirmed_by, assigned_agent_id, selected_participation_id, backup_participation_id, is_repeat, last_state_change_at</td><td>Status lives here. <code>last_state_change_at</code> drives the stale alert.</td></tr>
+      <tr><td class="k">rfqs</td><td class="f">id, request_id, version, file_id, sent_at, recipients_count</td><td>Generated xlsx + PDF.</td></tr>
+      <tr><td class="k">supplier_participations <span class="rev">supplier</span></td><td class="f">id, request_line_id, supplier_id, contact_id, status (contacted|quoted|shortlisted|negotiating|selected|backup|dropped|cannot_make), reason, first_contact_at, last_contact_at, notes</td><td>The sourcing board row. The sheet's "Other" column lands in notes.</td></tr>
+      <tr><td class="k">quotes <span class="rev">supplier</span></td><td class="f">id, participation_id, version, currency, incoterm, incoterm_uncertain, port, unit, moq, lead_days, valid_until, payment_terms, deviations, unit_weight_g, carton, source_file_id, normalised_usd_minor, fx_rate, fx_date, received_at</td><td></td></tr>
+      <tr><td class="k">quote_price_breaks <span class="rev">supplier</span></td><td class="f">quote_id, min_qty, unit_price_minor</td><td>"2000pcs $58.90; 5000pcs $57.18" becomes two rows.</td></tr>
+      <tr class="grp"><td colspan="3">Suppliers (supplier schema)</td></tr>
+      <tr><td class="k">suppliers</td><td class="f">id, ref (SUP-0042), legal_name, cn_name, type_verdict (manufacturer|trading|hybrid|unknown|unchecked), verdict_source, grade (A–E), uscc, registered_at, capital, city, province, country, ports[], notes, disclosed_to_org_ids[]</td><td></td></tr>
+      <tr><td class="k">supplier_contacts</td><td class="f">id, supplier_id, name, channel (alibaba|1688|wechat|email|global_sources|web), handle, phone, is_primary</td><td>"wechat / 1688" in the sheet becomes two rows.</td></tr>
+      <tr><td class="k">supplier_price_lists · supplier_catalogues</td><td class="f">id, supplier_id, file_id, received_at, valid_until, currency, notes</td><td>Standing price lists and raw catalogues; never client-visible.</td></tr>
+      <tr><td class="k">supplier_performance</td><td class="f">supplier_id, orders_count, on_time_rate, defect_rate, quote_accuracy, last_order_at</td><td>Updated on order completion.</td></tr>
+      <tr class="grp"><td colspan="3">Offers, samples, factory ranges</td></tr>
+      <tr><td class="k">offers · offer_options</td><td class="f">offers: id, request_line_id, version, status (draft|sent|accepted|changes_requested|declined|expired), pricing_display, valid_until, sent_at, decided_at · options: id, offer_id, label (A|B|C), participation_id (server-only), moq, lead_days, deviations_plain, sample_cost_minor, payment_terms, price_breaks (jsonb), factory_price_minor?, fee_minor?</td><td><code>participation_id</code> never leaves the server.</td></tr>
+      <tr><td class="k">samples</td><td class="f">id, request_line_id?, order_id?, participation_id (server-only), cost_minor, paid_by, courier, tracking, received_at, verdict, approved_by, approved_at</td><td>Photos via documents.</td></tr>
+      <tr><td class="k">factory_ranges · factory_range_items</td><td class="f">ranges: id, supplier_id (server-only), label (Factory F-0042), pdf_file_id (sanitised), approved_by, published_at, org_id (client it is shown to) · items: id, range_id, product_id, name, clean_image_file_id, moq, price_minor, currency, made_here (bool?)</td><td>Label from a per-agency sequence; DTO = label + items.</td></tr>
+      <tr class="grp"><td colspan="3">Orders and execution</td></tr>
+      <tr><td class="k">orders</td><td class="f">id, ref (ORD-2026-0312), org_id, request_id, offer_id, commercial_mode, pricing_display, incoterm, port, pi_number, state, milestone, confirmed_at, total_minor, currency</td><td></td></tr>
+      <tr><td class="k">order_lines</td><td class="f">id, order_id, request_line_id, product_id, spec_version, qty, unit_price_minor, fee_minor?, participation_id (server-only), po_id (server-only)</td><td></td></tr>
+      <tr><td class="k">purchase_orders <span class="rev">supplier</span></td><td class="f">id, order_id, supplier_id, po_ref, factory_total_minor, currency, terms, exworks_eta, status</td><td>One per supplier per order.</td></tr>
+      <tr><td class="k">payments</td><td class="f">id, order_id, kind (deposit|fee|balance|sample), pct, amount_minor, currency, payee (agency|factory), due_on, paid_at, reference, recorded_by</td><td>Recorded, not processed.</td></tr>
+      <tr><td class="k">artworks</td><td class="f">id, order_line_id, file_id, dieline_file_id, status (submitted|changes|approved), approved_by</td><td>Packaging templates.</td></tr>
+      <tr><td class="k">inspections</td><td class="f">id, po_id, inspector, inspected_at, aql, sample_size, result (pass|fail|rework), report_file_id, visible_to_client</td><td></td></tr>
+      <tr><td class="k">shipments</td><td class="f">id, order_id, forwarder, booking_ref, mode (sea|air|rail), container_or_awb, bl_file_id, packing_list_file_id, cargo_ready, etd, eta_port, customs_status, delivered_at</td><td>Sea, air, rail are attributes, not states.</td></tr>
+      <tr class="grp"><td colspan="3">Files, communication, audit, rules</td></tr>
+      <tr><td class="k">files · documents</td><td class="f">files: id, org_id, storage_key, mime, bytes, sha256, exif_stripped · documents: id, entity_type, entity_id, file_id, kind, visibility (client|internal), published_at, published_by</td><td>Publishing flips visibility and copies the object to the client prefix after the leak check.</td></tr>
+      <tr><td class="k">comments</td><td class="f">id, entity_type, entity_id, author_id, body, visibility (client|internal), source (app|whatsapp_log|email), attachments[]</td><td>Updates feed, "ask about this order", logged WhatsApp.</td></tr>
+      <tr><td class="k">activity_events</td><td class="f">id, org_id, entity_type, entity_id, actor_id, type, payload (jsonb), visibility, created_at</td><td>Timeline and audit; written by every mutation.</td></tr>
+      <tr><td class="k">notification_outbox</td><td class="f">id, user_id, channel (email), template, payload, idempotency_key, status, attempts, send_after, sent_at</td><td>Cron drains it.</td></tr>
+      <tr><td class="k">pricing_rules · fx_rates</td><td class="f">rules: id, scope (category|value_band), category, min_value_minor, margin_pct, fee_pct, uplift_pct, rounding · fx: date, base, quote, rate, source</td><td>Margin and target-price uplift by category; FX dated.</td></tr>
+      <tr><td class="k">sequences</td><td class="f">name, year, next_value</td><td>REQ / ORD / PRD / SUP / Factory F- references.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="anon">
+  <div class="eyebrow">07 · Anonymity in code</div>
+  <h2>Nine mechanisms, one test that must never be skipped</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Build-time</h3>
+      <ul>
+        <li><b>1 · Import boundary</b><span><code>src/server/client/**</code> may import <code>db/schema/app</code> only; an ESLint <code>no-restricted-imports</code> rule forbids <code>db/schema/supplier</code> there, and <code>app/(client)/**</code> may import only <code>server/client</code>.</span></li>
+        <li><b>2 · DTOs are allowlists</b><span>Every client-facing shape is a zod schema built with <code>.pick()</code> and <code>.strict()</code>; no <code>select *</code>, no spreading rows into responses.</span></li>
+        <li><b>3 · Key denylist test</b><span>A Vitest test walks every client DTO schema and fails on any key matching <code>/supplier|factory_id|participation|contact|wechat|alibaba|1688|uscc|quote|po_/</code>.</span></li>
+        <li><b>4 · Server-only ids</b><span><code>participation_id</code>, <code>po_id</code>, <code>supplier_id</code> are typed as server-only fields and excluded from every serialiser by construction.</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Run-time</h3>
+      <ul>
+        <li><b>5 · Files by prefix</b><span>The client download endpoint signs keys under <code>…/client/…</code> only. Agents upload to <code>…/internal/…</code>; "Publish to client" copies the object after the leak check and flips <code>documents.visibility</code>.</span></li>
+        <li><b>6 · Leak check</b><span>On every publish and every client-visible comment: scan filename, text and PDF text layer for supplier names from the DB, Alibaba/1688 URLs, WeChat handles, +86 numbers, company suffixes (Co., Ltd / 有限公司). Block with a reason.</span></li>
+        <li><b>7 · Images</b><span>Re-encoded server-side (EXIF gone); only <code>kind=clean</code> images serialise to clients; supplier originals keep <code>kind=supplier_facing</code>.</span></li>
+        <li><b>8 · Factory range label</b><span><code>Factory F-0042</code> comes from a sequence, not from the supplier; the DTO is <code>{label, items[]}</code>; the PDF is the sanitised upload only.</span></li>
+        <li><b>9 · Anonymity crawl</b><span>Playwright logs in as the seeded client, visits every client page and API route for an order whose supplier is named <code>ZZLEAKTEST Co., Ltd.</code>, and fails on any occurrence. Runs on every PR.</span></li>
+      </ul>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:12px;max-width:80ch">v1.1 hardening: a Postgres role <code>app_client</code> with no privileges on the <code>supplier</code> schema, used by the client request path — defence in depth in case a future refactor breaks rule 1.</p>
+</section>
+
+<section id="ux">
+  <div class="eyebrow">08 · UX</div>
+  <h2>Three screens carry the product</h2>
+  <figure>
+    <div class="fig">
+    <svg viewBox="0 0 960 330" role="img" aria-label="Two low-fidelity wireframes: New request with a paste-or-drop zone, three product lines with quantities and a send button; and an Order page with a nine-step milestone stepper, a waiting-on-you card, facts for quantity, price and ETA, and tabs for updates, documents and history.">
+      <rect class="bx-frame" x="20" y="20" width="440" height="290" rx="6"/>
+      <rect class="bx-bar" x="20" y="20" width="440" height="36" rx="6"/>
+      <text class="t" x="34" y="43">New request</text>
+      <rect class="bx-btn" x="356" y="28" width="94" height="22" rx="3"/><text class="tbtn" x="403" y="43" text-anchor="middle">Send request</text>
+      <rect class="bx-drop" x="40" y="70" width="400" height="60" rx="4"/>
+      <text class="tc" x="240" y="96" text-anchor="middle">Paste links, one per line — or drop photos</text>
+      <text class="ts" x="240" y="114" text-anchor="middle">Allegro, eMAG, Alibaba, TikTok, a photo from your phone</text>
+      <rect class="bx-strip" x="40" y="146" width="400" height="34" rx="3"/><rect class="bx-int" x="48" y="151" width="24" height="24" rx="3"/><text class="tc" x="82" y="167">allegro.pl/oferta/koszulki-na-karty-66x91…</text><rect class="bx-strip" x="360" y="151" width="70" height="24" rx="3"/><text class="tc" x="395" y="167" text-anchor="middle">100 000</text>
+      <rect class="bx-strip" x="40" y="186" width="400" height="34" rx="3"/><rect class="bx-int" x="48" y="191" width="24" height="24" rx="3"/><text class="tc" x="82" y="207">photo_2026-09-22.jpg — toploader 35pt</text><rect class="bx-strip" x="360" y="191" width="70" height="24" rx="3"/><text class="tc" x="395" y="207" text-anchor="middle">20 000</text>
+      <rect class="bx-strip" x="40" y="226" width="400" height="34" rx="3"/><rect class="bx-int" x="48" y="231" width="24" height="24" rx="3"/><text class="tc" x="82" y="247">ebay.de/itm/…  magnetic holder 35pt</text><rect class="bx-strip" x="360" y="231" width="70" height="24" rx="3"/><text class="tc" x="395" y="247" text-anchor="middle">5 000</text>
+      <rect class="bx-strip" x="40" y="270" width="400" height="26" rx="3"/><text class="ts" x="50" y="287">Anything we should know? (optional)</text>
+      <rect class="bx-frame" x="500" y="20" width="440" height="290" rx="6"/>
+      <rect class="bx-bar" x="500" y="20" width="440" height="36" rx="6"/>
+      <text class="t" x="514" y="43">ORD-2026-0312 · Card sleeves 66×91</text>
+      <text class="ta" x="926" y="43" text-anchor="end">Quality check · 7 of 9</text>
+      <line class="ln-base" x1="530" y1="80" x2="910" y2="80"/>
+      <circle class="dot-done" cx="530" cy="80" r="6"/><circle class="dot-done" cx="577" cy="80" r="6"/><circle class="dot-done" cx="625" cy="80" r="6"/><circle class="dot-done" cx="672" cy="80" r="6"/><circle class="dot-done" cx="720" cy="80" r="6"/><circle class="dot-done" cx="767" cy="80" r="6"/><circle class="dot-done" cx="815" cy="80" r="6"/><circle class="dot-todo" cx="862" cy="80" r="6"/><circle class="dot-todo" cx="910" cy="80" r="6"/>
+      <text class="ts" x="530" y="98" text-anchor="middle">Received</text><text class="ts" x="815" y="98" text-anchor="middle">QC</text><text class="ts" x="910" y="98" text-anchor="middle">Delivered</text>
+      <rect class="bx-client" x="520" y="108" width="400" height="44" rx="4"/>
+      <text class="tb" x="532" y="126">Waiting on you: balance 70% — $3,780, due 28 Sep</text>
+      <text class="ts" x="532" y="142">QC passed on 22 Sep · report attached</text>
+      <rect class="bx-btn" x="820" y="119" width="90" height="22" rx="3"/><text class="tbtn" x="865" y="134" text-anchor="middle">View invoice</text>
+      <rect class="bx-strip" x="520" y="162" width="126" height="40" rx="3"/><text class="ts" x="530" y="177">Quantity</text><text class="tb" x="530" y="194">100 000 pcs</text>
+      <rect class="bx-strip" x="657" y="162" width="126" height="40" rx="3"/><text class="ts" x="667" y="177">Price</text><text class="tb" x="667" y="194">$0.054 / pc + fee</text>
+      <rect class="bx-strip" x="794" y="162" width="126" height="40" rx="3"/><text class="ts" x="804" y="177">ETA Gdańsk</text><text class="tb" x="804" y="194">18 Nov 2026</text>
+      <text class="tb" x="520" y="226">Updates</text><text class="ts" x="580" y="226">Documents</text><text class="ts" x="655" y="226">History</text><text class="ts" x="920" y="226" text-anchor="end">Ask about this order</text>
+      <line class="ln-base" x1="520" y1="232" x2="920" y2="232"/>
+      <text class="tc" x="520" y="252">22 Sep · Quality check passed — 0 critical, 2 minor, report attached</text>
+      <text class="tc" x="520" y="272">15 Sep · In production — ex-works ETA 10 Oct</text>
+      <text class="tc" x="520" y="292">03 Sep · Order confirmed — deposit and fee received, artwork approved</text>
+    </svg>
+    </div>
+    <figcaption>Left: the whole intake — the client does what they did on WhatsApp, in a box. Right: the order page. The waiting-on-you card, the ETA and the Updates feed are what replace the status questions.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig">
+    <svg viewBox="0 0 960 300" role="img" aria-label="Low-fidelity wireframe of the ops sourcing board: header with request line, cost and target price, a table with one row per supplier showing type and grade, contact and channel, status, price at MOQ, terms, normalised USD per piece and last contact, and a compare bar with best clean, lowest quoted and spread plus action buttons.">
+      <rect class="bx-frame" x="20" y="20" width="920" height="260" rx="6"/>
+      <rect class="bx-bar" x="20" y="20" width="920" height="36" rx="6"/>
+      <text class="t" x="34" y="43">REQ-0312-07 · Card sleeves 66×91 100 µm · Negotiating</text>
+      <text class="ta" x="926" y="43" text-anchor="end">Cost floor $0.031 · Target $0.037 /pc · Client: Piotr · Finding factory</text>
+      <text class="tl" x="34" y="76">SUPPLIER</text><text class="tl" x="250" y="76">TYPE · GRADE</text><text class="tl" x="360" y="76">CONTACT · CHANNEL</text><text class="tl" x="500" y="76">STATUS</text><text class="tl" x="600" y="76">PRICE @ MOQ</text><text class="tl" x="720" y="76">TERMS</text><text class="tl" x="820" y="76">USD/PC</text><text class="tl" x="880" y="76">LAST</text>
+      <line class="ln-base" x1="34" y1="84" x2="926" y2="84"/>
+      <text class="tc" x="34" y="104">Dongguan Yuantuo Packaging</text><text class="tc" x="250" y="104">manufacturer · B</text><text class="tc" x="360" y="104">Daryl Yang · email</text><text class="ta" x="500" y="104">negotiating</text><text class="tc" x="600" y="104">0.0539 @ 100k</text><text class="tc" x="720" y="104">FOB SZ · 30 d · T/T</text><text class="tb" x="820" y="104">0.0539</text><text class="tc" x="880" y="104">2 d</text>
+      <text class="tc" x="34" y="130">Yiwu Suti Crafts</text><text class="tc" x="250" y="130">trading · D</text><text class="tc" x="360" y="130">Tim · Alibaba</text><text class="tw" x="500" y="130">dropped</text><text class="tc" x="600" y="130">0.032 @ 3k bags</text><text class="tc" x="720" y="130">FOB NB · 50% dep.</text><text class="tb" x="820" y="130">0.032</text><text class="tc" x="880" y="130">9 d</text>
+      <text class="tc" x="34" y="156">Quote B (依立, 1688)</text><text class="tc" x="250" y="156">unchecked · —</text><text class="tc" x="360" y="156">— · 1688</text><text class="tc" x="500" y="156">quoted</text><text class="tc" x="600" y="156">0.0348 @ 3k bags</text><text class="tc" x="720" y="156">EXW · —</text><text class="tb" x="820" y="156">0.0348</text><text class="tc" x="880" y="156">12 d</text>
+      <text class="tc" x="34" y="182">Guangdong Dr. Card</text><text class="tc" x="250" y="182">manufacturer · —</text><text class="tc" x="360" y="182">— · WeChat</text><text class="tc" x="500" y="182">contacted</text><text class="tc" x="600" y="182">—</text><text class="tc" x="720" y="182">—</text><text class="tc" x="820" y="182">—</text><text class="tw" x="880" y="182">15 d ⚠</text>
+      <line class="ln-base" x1="34" y1="198" x2="926" y2="198"/>
+      <rect class="bx-strip" x="34" y="210" width="892" height="28" rx="3"/>
+      <text class="tc" x="44" y="228">Compare: best clean 0.0539 (Yuantuo) · lowest quoted 0.032 (Suti, excluded: 6-month trader) · spread 2.4× · 3 quotes of 8 contacted · 2 stale</text>
+      <rect class="bx-btn" x="34" y="250" width="90" height="22" rx="3"/><text class="tbtn" x="79" y="265" text-anchor="middle">+ Supplier</text>
+      <rect class="bx-btn" x="134" y="250" width="90" height="22" rx="3"/><text class="tbtn" x="179" y="265" text-anchor="middle">Log quote</text>
+      <rect class="bx-btn" x="234" y="250" width="90" height="22" rx="3"/><text class="tbtn" x="279" y="265" text-anchor="middle">Shortlist</text>
+      <rect class="bx-btn" x="334" y="250" width="90" height="22" rx="3"/><text class="tbtn" x="379" y="265" text-anchor="middle">Build offer</text>
+      <text class="ts" x="926" y="265" text-anchor="end">Panels: Cost &amp; target · Offer · Timeline · Previous orders of this product · Log WhatsApp</text>
+    </svg>
+    </div>
+    <figcaption>The sourcing board is the Card sleeves tab with structure: the same rows, a status per supplier, quotes with price breaks, and the Best Prices comparison computed instead of built by hand. Sample data is the real Order 312 sleeve line as of 21 Sep.</figcaption>
+  </figure>
+
+  <div class="cols">
+    <div class="col">
+      <h3>Client flows</h3>
+      <ul>
+        <li><b>First login</b><span>Invite email → set password → dashboard with an empty "Waiting on you" and a "New request" button. No onboarding tour.</span></li>
+        <li><b>New request</b><span>Paste links / drop photos → quantities → send. Confirmation email with the REQ reference. Agent questions arrive as an Update + email, answered via "Ask about this order".</span></li>
+        <li><b>Price ready</b><span>Email → offer page: options A/B/C, price ladder, MOQ, lead time, deviations in plain words, sample cost → Accept · Ask for changes · Decline.</span></li>
+        <li><b>Sample</b><span>Email when shipped with tracking; approve or reject with photos.</span></li>
+        <li><b>Order confirmed</b><span>Invoice (factory price + fee for this client), amounts due; upload artwork; see approval.</span></li>
+        <li><b>Production → delivery</b><span>ETA changes emailed; QC result with report; shipping documents; confirm delivery; Reorder button.</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Agent flows</h3>
+      <ul>
+        <li><b>Ops dashboard</b><span>Stale lines (no change in 5 working days), waiting-on-us, waiting-on-client, unassigned. Claim with one click.</span></li>
+        <li><b>Request line</b><span>Complete the spec → freeze (v1) → cost model draft (Claude) → target price → generate RFQ → sourcing board.</span></li>
+        <li><b>Sourcing board</b><span>Add suppliers from the DB or inline; log quotes (form or file upload → extraction); shortlist with reasons; negotiate; Build offer picks the options and hides the rest.</span></li>
+        <li><b>Order</b><span>Confirm → PI → payments → artwork approval → PO per supplier → production ETA → inspection upload → shipment → done. Every step writes the timeline and, where mapped, emails the client.</span></li>
+        <li><b>Log WhatsApp</b><span>Paste a message or screenshot onto the order; it shows on the timeline with source = WhatsApp so the record stays complete.</span></li>
+        <li><b>Factory range</b><span>Upload the sanitised PDF, enter items, publish to the client under "Factory F-nnnn".</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="sheet">
+  <div class="eyebrow">09 · Sheet migration</div>
+  <h2>Sourcing Tracker → platform, column by column</h2>
+  <p class="muted" style="max-width:80ch">From the workbook as read on 22 Sep: a master index (89 rows) and 17 product tabs sharing one 7-column layout, plus two Best Prices tabs. Everything that is not a column lives in "Other".</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Sheet</th><th>Column (verbatim)</th><th>Lands in</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Master index</td><td class="f">Product (EN)</td><td class="f">requests.ref + request_lines.name · products.name</td><td>One request per product tab; master rows without a tab become requests with state Draft.</td></tr>
+      <tr><td class="k"></td><td class="f">Link</td><td class="f">request_lines.client_links[]</td><td>Tracking params stripped; <code>share.google</code> links flagged "not durable".</td></tr>
+      <tr><td class="k"></td><td class="f">Status</td><td class="f">request_lines.state</td><td><code>todo</code> → Submitted · <code>in progress</code> → Quotes in (or RFQ out if no quote rows) · <code>negotiating price</code> → Negotiating · blank → Draft.</td></tr>
+      <tr><td class="k"></td><td class="f">Who</td><td class="f">request_lines.assigned_agent_id</td><td>Marko, Cristina; <code>-</code> → unassigned.</td></tr>
+      <tr><td class="k"></td><td class="f">Notes / source</td><td class="f">comments (internal, source=whatsapp_log)</td><td>"Bogdan: …" notes keep the author in the body.</td></tr>
+      <tr><td class="k">Product tabs</td><td class="f">Company name</td><td class="f">suppliers.legal_name</td><td>Dedupe on normalised name (case, punctuation, "Co., Ltd." variants); "(1st account)/(2nd account)" and "(1688)/(alibaba)" prefixes become one supplier with two contacts.</td></tr>
+      <tr><td class="k"></td><td class="f">Company type (Baidu)</td><td class="f">suppliers.type_verdict · verdict_source=baidu</td><td><code>manufacturer</code>, <code>factory</code> → manufacturer · <code>trading</code> → trading · <code>hybrid</code> → hybrid · <code>unknown</code>, <code>unclear</code> → unknown · <code>haven't checked</code>, <code>haven't fully checked</code> → unchecked.</td></tr>
+      <tr><td class="k"></td><td class="f">Contact name</td><td class="f">supplier_contacts.name · handle · phone</td><td>Regex splits "小黑 / xiaohei141001" and "Kejea- Leith13609692076" into name, handle, phone.</td></tr>
+      <tr><td class="k"></td><td class="f">Platform</td><td class="f">supplier_contacts.channel</td><td>"wechat / 1688", "Alibaba / email" → two contact rows; <code>Web/Email</code> → email; <code>Global Sources</code> kept.</td></tr>
+      <tr><td class="k"></td><td class="f">Price</td><td class="f">quotes.price_breaks[0].unit_price_minor · currency</td><td>Comma decimals parsed; USD unless "RMB" appears in Other; <code>-</code> with "cannot…" in Other → participation.status = cannot_make.</td></tr>
+      <tr><td class="k"></td><td class="f">Incoterms</td><td class="f">quotes.incoterm · incoterm_uncertain</td><td><code>?</code>, <code>FOB (likely)</code>, <code>FOB? (…)</code> → FOB with incoterm_uncertain = true.</td></tr>
+      <tr><td class="k"></td><td class="f">Other (+ unnamed trailing column)</td><td class="f">participations.notes + extracted fields</td><td>Regex-extract MOQ ("MOQ 3000"), price breaks ("2000pcs - $58.90"), payment terms ("50/50", "30/70"), country ("Vietnam"), certificates; the full text always stays in notes.</td></tr>
+      <tr><td class="k"></td><td class="f">Number of tips (trees)</td><td class="f">quotes.deviations</td><td>Product-specific attribute kept as text.</td></tr>
+      <tr><td class="k">Fitness</td><td class="f">List of people that delivered the filled table · TS-2xx refs</td><td class="f">participations (status=quoted) · request_lines.ref</td><td>Suppliers named by contact only get a placeholder legal_name flagged "verify".</td></tr>
+      <tr><td class="k">Best Prices tabs</td><td class="f">whole tab</td><td class="f">documents (kind=comparison, internal)</td><td>Attached to the request; the compare view regenerates from structured quotes from now on.</td></tr>
+      <tr><td class="k">PVC tab</td><td class="f">Product · Material · …</td><td class="f">request with 9 Draft lines</td><td>It is a product list, not a supplier list.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted" style="margin-top:12px;max-width:80ch">Import runs from a CSV export per tab, is idempotent (re-runnable), writes an import report of every row it could not parse, and leaves the sheet untouched. The sheet becomes read-only the day the first client logs in.</p>
+</section>
+
+<section id="plan">
+  <div class="eyebrow">10 · Plan</div>
+  <h2>Four weeks, demo at the end of each</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Week</th><th>Build</th><th>Demo that proves it</th></tr></thead>
+    <tbody>
+      <tr><td class="k">1 · Foundation</td><td>Repo, CI, Neon, full Drizzle schema, Better Auth + invites, org auto-creation, app shell for /app and /ops, request intake (paste and go + xlsx import), request queue, activity log, email outbox, first templates.</td><td>A client pastes three links; the agent sees them in the queue and the client gets a confirmation email.</td></tr>
+      <tr><td class="k">2 · Sourcing</td><td>Suppliers and contacts, sourcing board, quotes with price breaks and USD normalisation, compare view, cost model + target price, offer builder, client offer page (accept / changes / decline), samples.</td><td>The live card-sleeves line runs on the board with the real quotes; the client accepts an offer in the app.</td></tr>
+      <tr><td class="k">3 · Orders</td><td>Order from offer, state machine + milestones, payments, artwork, POs, inspections, shipments, documents with visibility and publish, client order page, milestone emails, anonymity mechanisms 1–8 and the crawl.</td><td>Order 312 replayed end to end in staging; the anonymity crawl is green.</td></tr>
+      <tr><td class="k">4 · Go-live</td><td>Sheet import, catalog list, factory range, ops dashboard (stale, waiting), reorder, polish pass on the three screens, Playwright, first-client onboarding, cut-over.</td><td>First client logs in, sees their live lines, the sheet goes read-only.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="stack" style="margin-top:16px">
+    <div class="callout"><h3>v1.1 backlog, in order</h3><p>In-app messaging (if status questions persist) · Proposed by us · Landed-cost estimate on offers · WhatsApp Business notifications through the outbox · EUR display · Organisation and user management UI · Postgres client role · API keys and endpoints for the poller and RFQ generator · Polish UI.</p></div>
+    <div class="callout warn"><h3>Honest estimate</h3><p>Four weeks assumes near-full-time on the build with Claude Code, and client work continuing in parallel at reduced pace. Solo with normal interruptions it is six. The kill condition from discovery stands: fewer than three paying clients with active orders at go-live means the sheet plus a thin portal would have done.</p></div>
+  </div>
+</section>
+
+<section id="open">
+  <div class="eyebrow">11 · Open questions</div>
+  <h2>Twelve answers that would sharpen the build — each has a default</h2>
+  <div class="qs">
+    <div class="q"><span class="c">Q1</span><span>Brand and domain for the app — Influensia (influensia.ro) or sourc:co?<span class="d">app.influensia.ro, brand switchable by config.</span></span></div>
+    <div class="q"><span class="c">Q2</span><span>Sending domain for email (needs DNS records in Resend).<span class="d">same domain as Q1, sender "orders@".</span></span></div>
+    <div class="q"><span class="c">Q3</span><span>Where does the first client's money land — your account (then you pay the factory) or the factory's account?<span class="d">yours: agency_passthrough. If theirs, agency_direct and the factory is disclosed on that order.</span></span></div>
+    <div class="q"><span class="c">Q4</span><span>Which organisation owns the imported sheet lines — KOFF, Piotr's company, or split by tab?<span class="d">KOFF for everything; Card sleeves reassigned to Piotr's org if you say so.</span></span></div>
+    <div class="q"><span class="c">Q5</span><span>Agents on day one — Marko, Bogdan, Cristina, anyone else?<span class="d">the three of you; Marko admin.</span></span></div>
+    <div class="q"><span class="c">Q6</span><span>Is KOFF a client organisation or a partner that sees its customers' orders?<span class="d">client organisation now; partner_org_id stays empty.</span></span></div>
+    <div class="q"><span class="c">Q7</span><span>Client prices in USD (as factories quote) or EUR / PLN?<span class="d">USD, with EUR display in v1.1.</span></span></div>
+    <div class="q"><span class="c">Q8</span><span>Accounts: fine to create Vercel + Neon + Resend, with R2 on your existing Cloudflare?<span class="d">yes; all EU regions.</span></span></div>
+    <div class="q"><span class="c">Q9</span><span>Whose forwarder ships the first order — the client's or yours? Whoever books learns the factory.<span class="d">the client's, recorded on the shipment; disclosed_to updated.</span></span></div>
+    <div class="q"><span class="c">Q10</span><span>Who sanitises factory catalogue PDFs before upload?<span class="d">Bogdan or Cristina; the leak check verifies the text layer before publish.</span></span></div>
+    <div class="q"><span class="c">Q11</span><span>Should the client see "8 factories contacted, 3 quoted" on the Finding factory milestone?<span class="d">yes — builds trust, discloses nothing.</span></span></div>
+    <div class="q"><span class="c">Q12</span><span>Does the first client send lists as xlsx (like Order 312) or links on WhatsApp?<span class="d">both supported; xlsx import ships in week 1.</span></span></div>
+  </div>
+  <div class="conf">
+    <div class="c"><span class="pct">85%</span><span class="what">Stack — boring, current, one person can run it; the only real alternative is Supabase all-in.</span></div>
+    <div class="c"><span class="pct">90%</span><span class="what">Anonymity mechanisms — the crawl test is what makes the promise checkable.</span></div>
+    <div class="c"><span class="pct">70%</span><span class="what">Status-only is enough to stop status questions — if not, messaging is the first v1.1 item.</span></div>
+    <div class="c"><span class="pct">55%</span><span class="what">Four weeks — six is the honest solo number.</span></div>
+  </div>
+</section>
+
+<footer>
+  <div>Sources: <a href="https://nextjs.org/blog/next-16-3">Next.js 16.3 release (Aug 2026)</a> · <a href="https://better-auth.com/changelog">Better Auth changelog (v1.7.5, Sep 2026)</a> · <a href="https://better-auth.com/docs/adapters/drizzle">Better Auth Drizzle adapter</a> · <a href="https://eur-lex.europa.eu/eli/reg/2023/988/oj/eng">Regulation (EU) 2023/988 (GPSR)</a> · Sourcing Tracker workbook structure as read on 22 Sep 2026 · Discovery page v0.2.</div>
+  <div>Companion notes in the project: <span class="mono">platform/platform_discovery.md</span> · <span class="mono">platform/platform_blueprint.md</span></div>
+</footer>
+</div>

@@ -1,0 +1,849 @@
+<title>Sourcing Platform Discovery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F2F5F7; --surface:#FFFFFF; --surface2:#E7ECF0; --ink:#15202B; --muted:#5A6B7A; --line:#CBD5DD;
+  --accent:#0E7C86; --accent-ink:#0A5C64; --accent-tint:#D8EDEF;
+  --warn:#A96D12; --warn-tint:#F7EBD3; --danger:#B03A3A; --danger-tint:#F6DEDE;
+  --internal:#E3E8EC; --client:#D8EDEF;
+  --font-display:"Archivo",system-ui,Helvetica,Arial,sans-serif;
+  --font-body:"Source Sans 3","Source Sans Pro",system-ui,Helvetica,Arial,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:4px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1317; --surface:#151B21; --surface2:#1E262E; --ink:#E4EAF0; --muted:#98A8B6; --line:#2C3843;
+    --accent:#4EC3CC; --accent-ink:#8ADDE3; --accent-tint:#10383D;
+    --warn:#E2AC4E; --warn-tint:#3A2C12; --danger:#E27070; --danger-tint:#40201F;
+    --internal:#232D36; --client:#10383D;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1317; --surface:#151B21; --surface2:#1E262E; --ink:#E4EAF0; --muted:#98A8B6; --line:#2C3843;
+  --accent:#4EC3CC; --accent-ink:#8ADDE3; --accent-tint:#10383D;
+  --warn:#E2AC4E; --warn-tint:#3A2C12; --danger:#E27070; --danger-tint:#40201F;
+  --internal:#232D36; --client:#10383D;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding-block:0 64px;padding-inline:20px}
+h1,h2,h3{font-family:var(--font-display);text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,4.5vw,42px);font-weight:700;letter-spacing:-0.01em;line-height:1.1}
+h2{font-size:22px;font-weight:600;letter-spacing:-0.005em;margin-bottom:4px}
+h3{font-size:16px;font-weight:600}
+p{margin:0}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)}
+.lede{font-size:18px;max-width:64ch;color:var(--ink)}
+.muted{color:var(--muted)}
+.mono{font-family:var(--font-mono);font-size:0.9em}
+code{font-family:var(--font-mono);font-size:0.85em;background:var(--surface2);padding:1px 5px;border-radius:3px}
+a{color:var(--accent-ink);text-decoration-thickness:1px;text-underline-offset:2px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{padding-block:40px 20px;border-bottom:1px solid var(--line);display:grid;gap:12px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:14px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:600}
+.status{display:inline-block;font-family:var(--font-mono);font-size:11px;letter-spacing:0.06em;padding:2px 8px;border:1px solid var(--warn);color:var(--warn);border-radius:999px}
+.changelog{font-size:14px;color:var(--muted);border-left:2px solid var(--accent);padding-left:12px}
+
+nav.toc{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);margin-inline:-20px;padding-inline:20px}
+nav.toc ul{list-style:none;margin:0;padding:0;display:flex;gap:2px 18px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+nav.toc ul::-webkit-scrollbar{display:none}
+nav.toc a{display:inline-block;padding:10px 0;font-family:var(--font-display);font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;border-bottom:2px solid transparent}
+nav.toc a:hover{color:var(--ink)}
+
+section{padding-block:36px 8px;scroll-margin-top:56px}
+section > .eyebrow{margin-bottom:6px}
+.stack{display:grid;gap:14px}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:20px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;display:grid;gap:2px}
+.tile .n{font-family:var(--font-display);font-size:30px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.tile .l{font-size:13px;color:var(--muted)}
+
+.tablewrap{overflow-x:auto;margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:15px;background:var(--surface);border:1px solid var(--line)}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-family:var(--font-display);font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);background:var(--surface2);font-weight:600}
+tr:last-child td{border-bottom:none}
+td.k{font-weight:600;white-space:nowrap}
+td.mono{font-family:var(--font-mono);font-size:13px;white-space:nowrap}
+td.f{font-family:var(--font-mono);font-size:12.5px;line-height:1.45}
+.yes{color:var(--accent-ink);font-weight:600}
+.no{color:var(--danger);font-weight:600}
+.dash{color:var(--muted)}
+.v{display:inline-block;font-family:var(--font-mono);font-size:11px;letter-spacing:0.05em;padding:1px 7px;border-radius:999px;white-space:nowrap}
+.v-adopt{background:var(--accent-tint);color:var(--accent-ink);border:1px solid var(--accent)}
+.v-adapt{background:var(--warn-tint);color:var(--warn);border:1px solid var(--warn)}
+.v-flag{background:var(--danger-tint);color:var(--danger);border:1px solid var(--danger)}
+
+blockquote{margin:14px 0 0;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:var(--radius);font-size:14.5px;color:var(--ink);display:grid;gap:8px}
+blockquote .who{font-family:var(--font-display);font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted)}
+
+figure{margin:16px 0 0;display:grid;gap:8px}
+figure .fig{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+figure svg{display:block;min-width:640px;max-width:100%;height:auto;font-family:var(--font-body);color:var(--ink)}
+figure svg.wide{min-width:1000px}
+figcaption{font-size:14px;color:var(--muted);max-width:80ch}
+.bx-client{fill:var(--client);stroke:var(--accent);stroke-width:1.4}
+.bx-int{fill:var(--internal);stroke:var(--muted);stroke-width:1.2}
+.bx-cat{fill:var(--surface);stroke:var(--accent);stroke-width:1.4;stroke-dasharray:5 3}
+.bx-exc{fill:var(--surface);stroke:var(--warn);stroke-width:1.2;stroke-dasharray:4 3}
+.bx-lock{fill:var(--surface2);stroke:var(--muted);stroke-width:1.2}
+.bx-us{fill:var(--accent-tint);stroke:var(--accent);stroke-width:1.4}
+.t{fill:currentColor;font-size:12.5px;font-weight:600}
+.tc{fill:currentColor;font-size:10.5px;font-weight:600}
+.ts{fill:var(--muted);font-size:11px}
+.tl{fill:var(--muted);font-size:11px;font-family:var(--font-mono);letter-spacing:0.06em}
+.ta{fill:var(--accent-ink);font-size:11px;font-weight:600}
+.tm{fill:var(--accent-ink);font-size:11.5px;font-weight:600}
+.tw{fill:var(--danger);font-size:11px;font-weight:600}
+.tk{fill:var(--accent-ink);font-size:10px;font-family:var(--font-mono);letter-spacing:0.06em}
+.tq{fill:var(--warn);font-size:10px;font-family:var(--font-mono);letter-spacing:0.06em}
+.ln{stroke:currentColor;stroke-width:1.3;fill:none}
+.ln-acc{stroke:var(--accent);stroke-width:1.6;fill:none}
+.ln-dash{stroke:var(--warn);stroke-width:1.2;fill:none;stroke-dasharray:5 4}
+.ln-base{stroke:var(--line);stroke-width:2;fill:none}
+.br{stroke:var(--accent);stroke-width:1.4;fill:none}
+.wall{stroke:var(--danger);stroke-width:1.6;stroke-dasharray:7 5;fill:none}
+.mk path{fill:currentColor}
+.mk-acc path{fill:var(--accent)}
+.mk-w path{fill:var(--warn)}
+.dot-ok{fill:var(--accent)}
+.dot-bad{fill:var(--danger)}
+
+.rules{display:grid;gap:10px;margin-top:14px}
+.rule{display:grid;grid-template-columns:150px 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.rule:last-child{border-bottom:1px solid var(--line)}
+.rule .k{font-family:var(--font-display);font-weight:600;font-size:14px}
+@media (max-width:520px){.rule{grid-template-columns:1fr;gap:4px}}
+
+.problems{display:grid;gap:18px;margin-top:14px;counter-reset:prob}
+.problem{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--danger);border-radius:var(--radius);padding:14px 16px 14px 18px;display:grid;gap:8px}
+.problem h3{display:flex;gap:10px;align-items:baseline}
+.problem h3::before{counter-increment:prob;content:counter(prob,decimal-leading-zero);font-family:var(--font-mono);font-size:12px;color:var(--danger);letter-spacing:0.05em}
+.problem .row{display:grid;grid-template-columns:120px 1fr;gap:10px;font-size:15px}
+.problem .row b{font-family:var(--font-display);font-size:12px;letter-spacing:0.04em;text-transform:uppercase;color:var(--muted);font-weight:600;padding-top:3px}
+@media (max-width:520px){.problem .row{grid-template-columns:1fr;gap:2px}}
+
+ul.plain{margin:10px 0 0;padding-left:18px;display:grid;gap:6px}
+ul.plain li::marker{color:var(--muted)}
+
+.ia{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:14px}
+.ia .col{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.ia .col h3{margin-bottom:8px;display:flex;gap:8px;align-items:baseline}
+.ia .col h3 .tag{font-family:var(--font-mono);font-size:11px;letter-spacing:0.05em;color:var(--muted);text-transform:uppercase}
+.ia ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.ia li{display:grid;gap:1px;font-size:15px;padding:6px 0;border-top:1px solid var(--line)}
+.ia li:first-child{border-top:none}
+.ia li b{font-weight:600}
+.ia li span{font-size:13.5px;color:var(--muted)}
+
+.qgroups{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:14px}
+.qg{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.qg h3{display:flex;gap:8px;align-items:baseline;margin-bottom:8px}
+.qg h3 .g{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.qg ol{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.qg li{display:grid;grid-template-columns:38px 1fr;gap:8px;font-size:15px;line-height:1.4}
+.qg li .c{font-family:var(--font-mono);font-size:12px;color:var(--muted);padding-top:3px}
+.qg li.block .c{color:var(--warn);font-weight:500}
+.qg li.block .c::after{content:" ★"}
+.qg li .ans{display:block;font-size:13.5px;color:var(--accent-ink);margin-top:2px}
+.qg li .ans::before{content:"proposed answer · ";font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:14px;color:var(--muted);margin-top:10px}
+.legend .st{color:var(--warn);font-weight:600}
+.legend .pa{color:var(--accent-ink);font-weight:600}
+
+.callout{background:var(--accent-tint);border:1px solid var(--accent);border-radius:var(--radius);padding:14px 16px;display:grid;gap:6px}
+.callout.warn{background:var(--warn-tint);border-color:var(--warn)}
+.callout h3{font-size:14px;letter-spacing:0.04em;text-transform:uppercase}
+.conf{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}
+.conf .c{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;display:grid;gap:4px}
+.conf .pct{font-family:var(--font-display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.conf .what{font-size:14px}
+footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);display:grid;gap:6px}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Influensia · China–Europe sourcing · client portal + CRM + catalog</div>
+  <h1>Sourcing Platform Discovery</h1>
+  <p class="lede">The brief uses one word, "order", for three objects that behave differently — a price request, an offer, and a committed purchase — and factory anonymity breaks on paperwork and GPSR labels, not in the UI. This page fixes the shape, folds in the team's operating sequence, flags what needs a decision, and lists the open questions.</p>
+  <div class="meta"><span>Version <b>v0.2</b></span><span>Date <b>22 Sep 2026</b></span><span>Author <b>Claude, with Marko's scoping answers and Bogdan's and Cristina's proposals</b></span><span class="status">DRAFT — NOTHING BUILT</span></div>
+  <p class="changelog"><b>v0.2 changes:</b> five top-level entities (Marko: Clients, Suppliers, Products, Requests, Orders) with everything else hanging off them · Bogdan's internal sequence adopted as the state chain (target price, top-5 shortlist, negotiation, sample, 30/70 with QC gate, packaging templates, ETA) · two-level status: 9 client milestones over 24 internal states · same-factory cross-sell ("Piotr products selection") as an anonymised range · Cristina's milestone-by-milestone data table · Bogdan's separate sections as the information architecture · one new problem (commission wording vs all-in price) · 7 new questions.</p>
+</header>
+
+<nav class="toc" aria-label="Sections">
+  <ul>
+    <li><a href="#decisions">Decisions</a></li>
+    <li><a href="#team">Team input</a></li>
+    <li><a href="#model">Model</a></li>
+    <li><a href="#lifecycle">Lifecycle</a></li>
+    <li><a href="#data">Data per milestone</a></li>
+    <li><a href="#boundary">Anonymity boundary</a></li>
+    <li><a href="#ia">Sections</a></li>
+    <li><a href="#problems">Problems</a></li>
+    <li><a href="#automation">Automation</a></li>
+    <li><a href="#questions">Open questions</a></li>
+    <li><a href="#confidence">Confidence &amp; next</a></li>
+  </ul>
+</nav>
+
+<div class="tiles" aria-label="At a glance">
+  <div class="tile"><span class="n">5</span><span class="l">top-level entities: Clients, Suppliers, Products, Requests, Orders</span></div>
+  <div class="tile"><span class="n">9 / 24</span><span class="l">client milestones over internal states, two locks</span></div>
+  <div class="tile"><span class="n">9</span><span class="l">problems in the brief that need a decision</span></div>
+  <div class="tile"><span class="n">49</span><span class="l">open questions, 10 of them block the data model</span></div>
+</div>
+
+<section id="decisions">
+  <div class="eyebrow">01 · Decisions taken (Marko, 21 Sep 2026)</div>
+  <h2>Four forks already answered</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Fork</th><th>Decision</th><th>Consequence for the build</th></tr></thead>
+    <tbody>
+      <tr><td class="k">V1 scope</td><td>Internal system of record + client status view. Replaces the Sourcing Tracker sheets and the WhatsApp status questions.</td><td>Catalog is a browsable list in v1, no marketplace mechanics. The internal DB is the thing; the portal is a view on it.</td></tr>
+      <tr><td class="k">Money flow</td><td>Both modes must exist: <span class="mono">principal</span> (client pays us, we pay the factory, we issue the PI) and <span class="mono">agency</span> (client pays the factory, we invoice a fee). Set per client or per order.</td><td><code>commercial_mode</code> on every order; anonymity is only structurally possible in principal mode (see Problem 1). Bogdan's "30% + commission" wording presumes agency mode (Problem 9).</td></tr>
+      <tr><td class="k">Price shown</td><td>One all-in price, our margin hidden.</td><td>Offers and catalog carry a single unit price per quantity step; margin logic lives in a pricing-rules table nobody outside sees.</td></tr>
+      <tr><td class="k">Catalog resale</td><td>Per product, the agent decides whether a client-originated product goes to the catalog.</td><td>Needs a T&amp;C default anyway (Problem 5); a <code>visibility</code> field on Product with an audit trail of who decided.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="team">
+  <div class="eyebrow">02 · Team input (22 Sep 2026)</div>
+  <h2>What Bogdan and Cristina proposed, and what was done with it</h2>
+  <p class="muted" style="max-width:72ch">Bogdan's sequence is the real operating chain and is more specific than v0.1 in four places. It is also a single happy path written in agency-mode vocabulary, so two of its steps collide with decisions already taken. Verdicts below are proposals until Marko confirms them.</p>
+
+  <blockquote>
+    <span class="who">Bogdan — internal sequence</span>
+    <span>Receive the order → send to work group → identify factory production cost, add 20% = target price confirmed → filter top 5 factories → final negotiations (Bogdan) → FOB price confirmed → list the full product catalogue of the same factory, downloadable for the client ("Piotr products selection") → receive sample → confirmed order, send 30% + commission → packaging templates → in production, show ETA → QC, confirm QC → send 70%, connect forwarder with factory → send goods.</span>
+    <span class="who">Bogdan — what the client's team needs to see</span>
+    <span>Finding supplier → FOB price confirmed → submit packaging templates, send 30% deposit and commission → in production → QC completed, send 70%.</span>
+    <span class="who">Cristina</span>
+    <span>Structure the database first. Take each milestone and define what data about it must be stored. An Order also carries the request ID, the product IDs and the supplier IDs.</span>
+    <span class="who">Bogdan — sections</span>
+    <span>Separate sections for supplier information, price lists and product catalogue. A separate section for products proposed by us.</span>
+  </blockquote>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Proposal</th><th>From</th><th>Verdict</th><th>Where it lands</th></tr></thead>
+    <tbody>
+      <tr><td>Full internal sequence (receive → work group → cost → target → top 5 → negotiate → FOB → catalogue → sample → 30% + commission → packaging → production ETA → QC → 70% → forwarder → ship)</td><td>Bogdan</td><td><span class="v v-adopt">adopted</span></td><td>Replaces the generic "Collecting prices" with four real internal states; lifecycle lanes and the state table. "Work group" stays a notification target (WhatsApp), never the system of record.</td></tr>
+      <tr><td>Target price = factory production cost + 20%, confirmed before negotiating</td><td>Bogdan</td><td><span class="v v-adapt">adapted</span></td><td>Internal state <b>Cost model + target price</b>; fields <code>cost_model</code>, <code>uplift_pct</code>, <code>target_price</code>, <code>confirmed_by</code>. The 20% becomes a category default, not a constant — the cost models built so far show factory margins between roughly 10% and 30%. Answers B2 in principle.</td></tr>
+      <tr><td>Filter top 5 factories → final negotiation by Bogdan</td><td>Bogdan</td><td><span class="v v-adopt">adopted</span></td><td>A per-supplier funnel on every request line: contacted → quoted → shortlisted → negotiating → selected / dropped, with a reason. Entity <b>Supplier participation</b> (the Request × Supplier join).</td></tr>
+      <tr><td>Full catalogue of the selected factory, downloadable for the client ("Piotr products selection")</td><td>Bogdan</td><td><span class="v v-adapt">adapted</span></td><td>Strong commercial idea — more volume with one factory, consolidated shipping, fewer QC trips. Never the factory's own file: a sanitised range re-rendered by us, labelled "Factory F-0042". Selecting items creates request lines pre-linked to that supplier, skipping the RFQ. See the cross-sell figure and Problem 1.</td></tr>
+      <tr><td>Sample before order confirmation</td><td>Bogdan</td><td><span class="v v-adopt">adopted</span></td><td>Default path with its own client milestone <b>Sample approved</b>; skippable for repeat orders and for stock goods the client accepts on spec.</td></tr>
+      <tr><td>30% deposit + commission at order confirmation, 70% after QC</td><td>Bogdan</td><td><span class="v v-flag">flagged</span></td><td>Payment milestones adopted (deposit at order, balance gated on QC pass). "Commission" as a separate line contradicts the all-in-price decision unless that client is on agency mode — and a deposit wired to the factory's bank account discloses the factory. Problem 9, question M1.</td></tr>
+      <tr><td>Packaging templates submitted by the client after the order</td><td>Bogdan</td><td><span class="v v-adopt">adopted</span></td><td>A client task inside the <b>Order confirmed</b> milestone with an approval loop; artwork files, dieline, carton and label spec stored on the order.</td></tr>
+      <tr><td>Show ETA in production; connect forwarder with factory</td><td>Bogdan</td><td><span class="v v-flag">flagged</span></td><td>ETA fields adopted (ex-works ETA, ETD, ETA at EU port) and shown on the milestone. "Connect forwarder with factory" is flagged: whoever books the freight learns the factory's name, and if it is the client's forwarder the factory is on the B/L the client receives. Question M6.</td></tr>
+      <tr><td>Client sees only five milestones</td><td>Bogdan</td><td><span class="v v-adapt">adapted</span></td><td>Right instinct — every extra client-visible state is an update the team owes. Nine instead of five: Bogdan's five plus the three that carry an ETA or a client action (Sample, Shipped, Delivered). Without a shipping milestone "has it left yet?" comes straight back on WhatsApp.</td></tr>
+      <tr><td>Structure the database first; per milestone, define the data stored; an Order carries request ID, product IDs, supplier IDs</td><td>Cristina</td><td><span class="v v-adopt">adopted</span></td><td>This is the v0.2 method. Section 05 is that exercise, milestone by milestone. Her example is exactly right: Order ← Request, Order lines → Products, POs → Suppliers (internal only).</td></tr>
+      <tr><td>Separate sections for supplier information, price lists, product catalogue</td><td>Bogdan</td><td><span class="v v-adopt">adopted</span></td><td>Internal modules in section 07. General price lists are kept distinct from RFQ quotes — a price list is a supplier's standing offer on its range; a quote answers our spec.</td></tr>
+      <tr><td>Separate section for products proposed by us</td><td>Bogdan</td><td><span class="v v-adopt">adopted</span></td><td>Client-portal section <b>Proposed by us</b>, distinct from the sourced catalog: our proactive picks (Scout pipeline) with evidence and a price band, per client. Answers H3 in part.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="model">
+  <div class="eyebrow">03 · Structural model</div>
+  <h2>Five top-level entities; everything else hangs off them</h2>
+  <p class="muted" style="max-width:72ch">Marko's five — Clients, Suppliers, Products, Requests, Orders — are the tables people will name. Offers, quotes, samples, specs, price lists and shipments are children or joins of those five, not peers.</p>
+
+  <figure>
+    <div class="fig">
+    <svg viewBox="0 0 960 470" role="img" aria-label="Entity map: Clients submit Requests and own Orders; Requests have lines that reference Products, go out as RFQs to Suppliers who return quotes, and become Orders when an offer is accepted; Orders raise POs per Supplier; Suppliers' price lists and catalogues feed Products as an anonymised range.">
+      <defs>
+        <marker id="e1" class="mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+        <marker id="e2" class="mk-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <!-- clients -> orders arc -->
+      <path class="ln" d="M140 180 V60 H820 V178" marker-end="url(#e1)"/>
+      <text class="ts" x="480" y="54" text-anchor="middle">owns · pays · sees milestones</text>
+      <!-- boxes -->
+      <rect class="bx-client" x="40" y="180" width="200" height="110" rx="4"/>
+      <text class="t" x="140" y="203" text-anchor="middle">Clients</text>
+      <text class="ts" x="140" y="226" text-anchor="middle">users · roles · partner tier?</text>
+      <text class="ts" x="140" y="244" text-anchor="middle">terms · commercial_mode</text>
+      <text class="ts" x="140" y="262" text-anchor="middle">forecast accuracy · messages</text>
+      <rect class="bx-client" x="380" y="180" width="200" height="110" rx="4"/>
+      <text class="t" x="480" y="203" text-anchor="middle">Requests</text>
+      <text class="ts" x="480" y="226" text-anchor="middle">lines (product × qty × forecast)</text>
+      <text class="ts" x="480" y="244" text-anchor="middle">spec vN · cost model · target price</text>
+      <text class="ts" x="480" y="262" text-anchor="middle">offers · samples · change requests</text>
+      <rect class="bx-client" x="720" y="180" width="200" height="110" rx="4"/>
+      <text class="t" x="820" y="203" text-anchor="middle">Orders</text>
+      <text class="ts" x="820" y="226" text-anchor="middle">lines ← accepted offer · PI</text>
+      <text class="ts" x="820" y="244" text-anchor="middle">payment milestones · artwork</text>
+      <text class="ts" x="820" y="262" text-anchor="middle">POs · QC · shipments · docs</text>
+      <rect class="bx-cat" x="380" y="340" width="200" height="110" rx="4"/>
+      <text class="t" x="480" y="363" text-anchor="middle">Products</text>
+      <text class="ts" x="480" y="386" text-anchor="middle">master spec (versions) · images</text>
+      <text class="ts" x="480" y="404" text-anchor="middle">cost model · reference price</text>
+      <text class="ts" x="480" y="422" text-anchor="middle">visibility: catalog · proposed · range</text>
+      <rect class="bx-int" x="720" y="340" width="200" height="110" rx="4"/>
+      <text class="t" x="820" y="363" text-anchor="middle">Suppliers</text>
+      <text class="ts" x="820" y="386" text-anchor="middle">registry · grade · channels</text>
+      <text class="ts" x="820" y="404" text-anchor="middle">price lists · catalogues (raw)</text>
+      <text class="ts" x="820" y="422" text-anchor="middle">quotes · performance · disclosed_to</text>
+      <!-- edges -->
+      <line class="ln" x1="240" y1="235" x2="378" y2="235" marker-end="url(#e1)"/>
+      <text class="ts" x="309" y="227" text-anchor="middle">submits</text>
+      <line class="ln-acc" x1="580" y1="235" x2="718" y2="235" marker-end="url(#e2)"/>
+      <text class="ta" x="649" y="227" text-anchor="middle">offer accepted</text>
+      <line class="ln" x1="480" y1="290" x2="480" y2="338" marker-end="url(#e1)"/>
+      <text class="ts" x="488" y="318">lines reference</text>
+      <line class="ln" x1="820" y1="290" x2="820" y2="338" marker-end="url(#e1)"/>
+      <text class="ts" x="828" y="318">PO per supplier</text>
+      <path class="ln" d="M580 270 H660 V395 H718" marker-end="url(#e1)"/>
+      <text class="ts" x="652" y="380" text-anchor="end">RFQ → quotes</text>
+      <line class="ln-acc" x1="720" y1="428" x2="582" y2="428" marker-end="url(#e2)" stroke-dasharray="5 3"/>
+      <text class="ta" x="650" y="416" text-anchor="middle">anonymised range</text>
+    </svg>
+    </div>
+    <figcaption>Offers are children of Requests; Quotes are the Request × Supplier join (one row per supplier per line, carrying the funnel status); Samples hang off a request line or an order; Order lines copy the accepted request lines, so they reference Products through them. Products is the hub: a catalog listing, a "proposed by us" item and an item in a factory range are all Products with a different <code>visibility</code>, not separate tables.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig">
+    <svg viewBox="0 0 960 350" role="img" aria-label="Client-side objects Request, Offer, Order and the published Product sit above an anonymity boundary; internal Spec, RFQ, Supplier and Quote sit below it; only the anonymised Offer and the published Product cross upward.">
+      <defs>
+        <marker id="m1" class="mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+        <marker id="m2" class="mk-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <path class="ln-acc" d="M875 178 V30 H135 V56" marker-end="url(#m2)" stroke-dasharray="5 3"/>
+      <text class="ta" x="505" y="24" text-anchor="middle">order from catalog → pre-filled request → short re-quote</text>
+      <text class="tl" x="330" y="50">CLIENT SIDE · what the client sees</text>
+      <text class="tl" x="40" y="252">INTERNAL · agents + automation</text>
+      <rect class="bx-client" x="40" y="60" width="190" height="64" rx="4"/>
+      <text class="t" x="135" y="86" text-anchor="middle">Request</text>
+      <text class="ts" x="135" y="104" text-anchor="middle">lines · forecast · reference links</text>
+      <rect class="bx-client" x="330" y="60" width="190" height="64" rx="4"/>
+      <text class="t" x="425" y="86" text-anchor="middle">Offer</text>
+      <text class="ts" x="425" y="104" text-anchor="middle">option A/B/C · all-in price · validity</text>
+      <rect class="bx-client" x="600" y="60" width="170" height="64" rx="4"/>
+      <text class="t" x="685" y="86" text-anchor="middle">Order</text>
+      <text class="ts" x="685" y="104" text-anchor="middle">locked · POs per supplier</text>
+      <line class="ln" x1="230" y1="92" x2="328" y2="92" marker-end="url(#m1)"/>
+      <text class="ts" x="279" y="84" text-anchor="middle">priced</text>
+      <line class="ln" x1="520" y1="92" x2="598" y2="92" marker-end="url(#m1)"/>
+      <text class="ts" x="559" y="84" text-anchor="middle">accepted</text>
+      <rect class="bx-cat" x="805" y="178" width="140" height="64" rx="4"/>
+      <text class="t" x="875" y="204" text-anchor="middle">Product · catalog</text>
+      <text class="ts" x="875" y="222" text-anchor="middle">reference price · spec vN</text>
+      <line class="wall" x1="20" y1="210" x2="800" y2="210"/>
+      <text class="tw" x="150" y="204">anonymity boundary — supplier identity never crosses upward</text>
+      <line class="ln" x1="115" y1="124" x2="115" y2="258" marker-end="url(#m1)"/>
+      <text class="ts" x="123" y="160">spec frozen → v1</text>
+      <rect class="bx-int" x="40" y="260" width="150" height="64" rx="4"/>
+      <text class="t" x="115" y="286" text-anchor="middle">Spec vN</text>
+      <text class="ts" x="115" y="304" text-anchor="middle">frozen, versioned</text>
+      <rect class="bx-int" x="250" y="260" width="140" height="64" rx="4"/>
+      <text class="t" x="320" y="286" text-anchor="middle">RFQ</text>
+      <text class="ts" x="320" y="304" text-anchor="middle">xlsx + fillable PDF</text>
+      <rect class="bx-int" x="450" y="260" width="140" height="64" rx="4"/>
+      <text class="t" x="520" y="286" text-anchor="middle">Supplier</text>
+      <text class="ts" x="520" y="304" text-anchor="middle">grade · USCC · price lists</text>
+      <rect class="bx-int" x="650" y="260" width="140" height="64" rx="4"/>
+      <text class="t" x="720" y="286" text-anchor="middle">Quote</text>
+      <text class="ts" x="720" y="304" text-anchor="middle">raw · normalised USD/pc</text>
+      <line class="ln" x1="190" y1="292" x2="248" y2="292" marker-end="url(#m1)"/>
+      <text class="ts" x="220" y="284" text-anchor="middle">generates</text>
+      <line class="ln" x1="390" y1="292" x2="448" y2="292" marker-end="url(#m1)"/>
+      <text class="ts" x="420" y="284" text-anchor="middle">sent to N</text>
+      <line class="ln" x1="590" y1="292" x2="648" y2="292" marker-end="url(#m1)"/>
+      <text class="ts" x="620" y="284" text-anchor="middle">returns</text>
+      <path class="ln-acc" d="M720 260 V175 H425 V126" marker-end="url(#m2)"/>
+      <text class="ta" x="572" y="168" text-anchor="middle">anonymised · margin applied · A/B/C</text>
+      <path class="ln-acc" d="M790 292 H875 V244" marker-end="url(#m2)" stroke-dasharray="5 3"/>
+      <text class="ta" x="800" y="308">publish (agent decides)</text>
+    </svg>
+    </div>
+    <figcaption>Only two things cross the boundary upward: an Offer (a Quote with the supplier stripped and margin applied) and a Product published to the catalog. Everything below the line is invisible to clients by construction, not by UI toggle.</figcaption>
+  </figure>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Object</th><th>Parent</th><th>Owner</th><th>Client can edit</th><th>ID pattern</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Request (with lines)</td><td>Client</td><td>Client</td><td class="yes">Yes, until spec lock</td><td class="mono">REQ-2026-0312 · line 07</td></tr>
+      <tr><td class="k">Supplier participation</td><td>Request line × Supplier</td><td>Agent</td><td class="no">Invisible</td><td class="mono">REQ-0312-07 × SUP-0042</td></tr>
+      <tr><td class="k">Quote</td><td>Supplier participation</td><td>Agent / automation</td><td class="no">Invisible</td><td class="mono">QUO-0312-07-0042-v2</td></tr>
+      <tr><td class="k">Offer</td><td>Request line</td><td>Us</td><td>Accept / ask changes / decline</td><td class="mono">OFR-0312-07-A</td></tr>
+      <tr><td class="k">Sample</td><td>Request line or Order</td><td>Agent</td><td>Approve / reject with photos</td><td class="mono">SMP-0312-07-1</td></tr>
+      <tr><td class="k">Order (with lines, POs, shipments)</td><td>Client ← Request</td><td>Agent</td><td class="no">No — change requests only</td><td class="mono">ORD-2026-0312 · PO-0312-0042</td></tr>
+      <tr><td class="k">Product</td><td>—</td><td>Admin publishes</td><td>Request offer from it</td><td class="mono">PRD-0041 · spec v2</td></tr>
+      <tr><td class="k">Price list · Catalogue (raw)</td><td>Supplier</td><td>Agent</td><td class="no">Invisible — sanitised range only</td><td class="mono">SUP-0042 · PL-2026-09</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 style="margin-top:28px">Roles and what each one sees</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Role</th><th>Sees</th><th>Never sees</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Client user<br><span class="muted" style="font-weight:400">owner / buyer / viewer per company</span></td><td>Own requests, offers, orders, milestones, client-visible documents, messages, catalog, proposals, factory ranges on own orders</td><td>Suppliers, raw quotes, internal notes, margins, target prices, other clients</td></tr>
+      <tr><td class="k">Partner / reseller<br><span class="muted" style="font-weight:400">KOFF-type, to be decided</span></td><td>Its sub-clients' orders?</td><td>Supplier data</td></tr>
+      <tr><td class="k">Agent<br><span class="muted" style="font-weight:400">Bogdan, Cristina, hires</span></td><td>Everything for assigned clients, supplier DB, quotes, price lists, cost models</td><td class="dash">—</td></tr>
+      <tr><td class="k">Admin<br><span class="muted" style="font-weight:400">Marko</span></td><td>All of the above, pricing rules, publishing, users</td><td class="dash">—</td></tr>
+      <tr><td class="k">Automation<br><span class="muted" style="font-weight:400">service account</span></td><td>Writes quotes and supplier messages from the poller and extractors</td><td>No client-facing writes, ever</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="lifecycle">
+  <div class="eyebrow">04 · Lifecycle</div>
+  <h2>Nine client milestones over twenty-four internal states</h2>
+  <p class="muted" style="max-width:72ch">Bogdan's point stands: the client should see few, meaningful milestones. The team works in granular states underneath; each internal state rolls up to exactly one milestone. Milestones marked ▲ wait on a client action.</p>
+
+  <figure>
+    <div class="fig">
+    <svg class="wide" viewBox="0 0 1330 300" role="img" aria-label="Sourcing lane: internal states Draft, Submitted, In review, Spec frozen, Cost model and target price, RFQ out, Quotes in, Shortlist top 5, Negotiating, Offer ready, Sample, Accepted, grouped under client milestones Request received, Finding supplier, FOB price confirmed, Sample approved. Execution lane: Order confirmed, Deposit and commission, Packaging templates, In production, QC inspection, Balance, Forwarder connected, Shipped ex-works, Departed origin, EU port and customs, Delivered, Completed, grouped under Order confirmed, In production with ETA, QC passed with 70 percent due, Shipped with ETA, Delivered.">
+      <defs>
+        <marker id="l1" class="mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+        <marker id="l2" class="mk-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <!-- LANE 1 -->
+      <text class="tl" x="20" y="14">SOURCING · per request line — client milestones above, internal states below</text>
+      <text class="tm" x="179" y="34" text-anchor="middle">Request received</text>
+      <path class="br" d="M20 48 V42 H338 V48"/>
+      <text class="tm" x="665" y="34" text-anchor="middle">Finding supplier</text>
+      <path class="br" d="M344 48 V42 H986 V48"/>
+      <text class="tm" x="1043" y="34" text-anchor="middle">FOB price confirmed ▲</text>
+      <path class="br" d="M992 48 V42 H1094 V48"/>
+      <text class="tm" x="1151" y="34" text-anchor="middle">Sample approved ▲</text>
+      <path class="br" d="M1100 48 V42 H1202 V48"/>
+      <rect class="bx-client" x="20" y="56" width="102" height="38" rx="4"/><text class="tc" x="71" y="79" text-anchor="middle">Draft</text>
+      <rect class="bx-client" x="128" y="56" width="102" height="38" rx="4"/><text class="tc" x="179" y="79" text-anchor="middle">Submitted</text>
+      <rect class="bx-client" x="236" y="56" width="102" height="38" rx="4"/><text class="tc" x="287" y="79" text-anchor="middle">In review</text>
+      <rect class="bx-lock" x="344" y="56" width="102" height="38" rx="4"/><text class="tc" x="395" y="79" text-anchor="middle">Spec frozen</text>
+      <rect class="bx-lock" x="452" y="56" width="102" height="38" rx="4"/><text class="tc" x="503" y="72" text-anchor="middle">Cost model +</text><text class="tc" x="503" y="85" text-anchor="middle">target price</text>
+      <rect class="bx-lock" x="560" y="56" width="102" height="38" rx="4"/><text class="tc" x="611" y="79" text-anchor="middle">RFQ out</text>
+      <rect class="bx-lock" x="668" y="56" width="102" height="38" rx="4"/><text class="tc" x="719" y="79" text-anchor="middle">Quotes in</text>
+      <rect class="bx-lock" x="776" y="56" width="102" height="38" rx="4"/><text class="tc" x="827" y="72" text-anchor="middle">Shortlist</text><text class="tc" x="827" y="85" text-anchor="middle">top 5</text>
+      <rect class="bx-lock" x="884" y="56" width="102" height="38" rx="4"/><text class="tc" x="935" y="79" text-anchor="middle">Negotiating</text>
+      <rect class="bx-lock" x="992" y="56" width="102" height="38" rx="4"/><text class="tc" x="1043" y="72" text-anchor="middle">Offer ready</text><text class="tc" x="1043" y="85" text-anchor="middle">FOB confirmed</text>
+      <rect class="bx-lock" x="1100" y="56" width="102" height="38" rx="4"/><text class="tc" x="1151" y="72" text-anchor="middle">Sample</text><text class="tc" x="1151" y="85" text-anchor="middle">ordered → approved</text>
+      <rect class="bx-int" x="1208" y="56" width="102" height="38" rx="4"/><text class="tc" x="1259" y="79" text-anchor="middle">Accepted</text>
+      <text class="tq" x="287" y="110" text-anchor="middle">↔ input needed</text>
+      <text class="tk" x="395" y="110" text-anchor="middle">▲ spec lock</text>
+      <text class="tq" x="1043" y="110" text-anchor="middle">▲ accept</text>
+      <text class="tq" x="1151" y="110" text-anchor="middle">▲ approve</text>
+      <text class="ts" x="20" y="128">Exceptions: needs your input · change request (agent decides, may reopen the RFQ) · sample rejected → re-sample or re-source · quote expired → re-quote</text>
+      <!-- transition -->
+      <path class="ln-acc" d="M1259 94 V146 H8 V235 H18" marker-end="url(#l2)"/>
+      <text class="ta" x="1000" y="141" text-anchor="middle">accepted → order</text>
+      <!-- LANE 2 -->
+      <text class="tl" x="20" y="172">EXECUTION · per order (PO / shipment internally)</text>
+      <text class="tm" x="179" y="192" text-anchor="middle">Order confirmed ▲</text>
+      <path class="br" d="M20 206 V200 H338 V206"/>
+      <text class="tm" x="395" y="192" text-anchor="middle">In production · ETA</text>
+      <path class="br" d="M344 206 V200 H446 V206"/>
+      <text class="tm" x="557" y="192" text-anchor="middle">QC passed · 70% due ▲</text>
+      <path class="br" d="M452 206 V200 H662 V206"/>
+      <text class="tm" x="881" y="192" text-anchor="middle">Shipped · ETA</text>
+      <path class="br" d="M668 206 V200 H1094 V206"/>
+      <text class="tm" x="1205" y="192" text-anchor="middle">Delivered ▲</text>
+      <path class="br" d="M1100 206 V200 H1310 V206"/>
+      <rect class="bx-int" x="20" y="216" width="102" height="38" rx="4"/><text class="tc" x="71" y="232" text-anchor="middle">Order</text><text class="tc" x="71" y="245" text-anchor="middle">confirmed</text>
+      <rect class="bx-int" x="128" y="216" width="102" height="38" rx="4"/><text class="tc" x="179" y="232" text-anchor="middle">Deposit 30%</text><text class="tc" x="179" y="245" text-anchor="middle">+ commission</text>
+      <rect class="bx-int" x="236" y="216" width="102" height="38" rx="4"/><text class="tc" x="287" y="232" text-anchor="middle">Packaging</text><text class="tc" x="287" y="245" text-anchor="middle">templates</text>
+      <rect class="bx-int" x="344" y="216" width="102" height="38" rx="4"/><text class="tc" x="395" y="232" text-anchor="middle">In production</text><text class="tc" x="395" y="245" text-anchor="middle">ETA shown</text>
+      <rect class="bx-int" x="452" y="216" width="102" height="38" rx="4"/><text class="tc" x="503" y="239" text-anchor="middle">QC inspection</text>
+      <rect class="bx-int" x="560" y="216" width="102" height="38" rx="4"/><text class="tc" x="611" y="239" text-anchor="middle">Balance 70%</text>
+      <rect class="bx-int" x="668" y="216" width="102" height="38" rx="4"/><text class="tc" x="719" y="232" text-anchor="middle">Forwarder</text><text class="tc" x="719" y="245" text-anchor="middle">connected</text>
+      <rect class="bx-int" x="776" y="216" width="102" height="38" rx="4"/><text class="tc" x="827" y="232" text-anchor="middle">Shipped</text><text class="tc" x="827" y="245" text-anchor="middle">ex-works</text>
+      <rect class="bx-int" x="884" y="216" width="102" height="38" rx="4"/><text class="tc" x="935" y="232" text-anchor="middle">Departed</text><text class="tc" x="935" y="245" text-anchor="middle">origin</text>
+      <rect class="bx-int" x="992" y="216" width="102" height="38" rx="4"/><text class="tc" x="1043" y="232" text-anchor="middle">EU port /</text><text class="tc" x="1043" y="245" text-anchor="middle">customs</text>
+      <rect class="bx-int" x="1100" y="216" width="102" height="38" rx="4"/><text class="tc" x="1151" y="239" text-anchor="middle">Delivered</text>
+      <rect class="bx-int" x="1208" y="216" width="102" height="38" rx="4"/><text class="tc" x="1259" y="239" text-anchor="middle">Completed</text>
+      <text class="tk" x="71" y="270" text-anchor="middle">▲ order lock</text>
+      <text class="tq" x="179" y="270" text-anchor="middle">▲ pay 30% + fee</text>
+      <text class="tq" x="287" y="270" text-anchor="middle">▲ artwork</text>
+      <text class="tq" x="611" y="270" text-anchor="middle">▲ pay 70%</text>
+      <text class="tq" x="1151" y="270" text-anchor="middle">▲ confirm</text>
+      <text class="ts" x="20" y="288">Exceptions: QC fail → rework (back to In production) · on hold · cancelled — after the commercial lock, agent only</text>
+    </svg>
+    </div>
+    <figcaption>Teal chips: the client edits freely. Grey-outlined chips after the spec lock: change requests only. Dark chips: agents move the state; the client sees the milestone, documents and messages. Bogdan's five milestones are all here; Sample, Shipped and Delivered were added because each carries an ETA or a client action. Sea, air and rail are attributes of "Departed origin", not separate states.</figcaption>
+  </figure>
+
+  <h3 style="margin-top:28px">What moves each internal state</h3>
+  <p class="muted" style="max-width:72ch;margin-top:4px">A CRM dies when agents stop updating it. Most transitions are by-products of work the agent does anyway; the ones marked "manual" are the adoption risk.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Internal state</th><th>Moved by</th><th>Trigger</th><th>Client can</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Draft → Submitted</td><td>Client</td><td>Submits; completeness gate must pass (Q B1)</td><td>Edit everything</td></tr>
+      <tr><td class="k">In review</td><td>System</td><td>Agent assigned (claim or auto-assign); work group notified</td><td>Edit everything; answer questions</td></tr>
+      <tr><td class="k">Spec frozen vN</td><td>Agent</td><td>Manual, one click, stamps the version</td><td>Change request only</td></tr>
+      <tr><td class="k">Cost model + target price</td><td>Agent (Claude drafts)</td><td>Cost model saved; target = cost × (1 + uplift); confirmed by Bogdan or the client (Q M3)</td><td>Watch (target price stays internal unless decided otherwise)</td></tr>
+      <tr><td class="k">RFQ out</td><td>System</td><td>RFQ generated and marked sent; participation rows created per supplier</td><td>Watch</td></tr>
+      <tr><td class="k">Quotes in</td><td>System</td><td>First quote file uploaded or extracted by the poller</td><td>See "N contacted, M quoted"</td></tr>
+      <tr><td class="k">Shortlist top 5</td><td>Agent</td><td>Manual; each shortlisted or dropped supplier gets a reason</td><td>Watch</td></tr>
+      <tr><td class="k">Negotiating</td><td>Agent (Bogdan)</td><td>Manual; negotiation notes and counter-offers logged on the participation row</td><td>Watch</td></tr>
+      <tr><td class="k">Offer ready / FOB confirmed</td><td>System</td><td>Agent publishes an offer built from ≥1 quote; selected + backup supplier recorded internally</td><td>Accept / ask changes / decline; browse the factory range</td></tr>
+      <tr><td class="k">Sample ordered → approved</td><td>Agent, then client</td><td>Sample record created with cost and tracking; client approves or rejects with photos</td><td>Pay sample cost; approve / reject</td></tr>
+      <tr><td class="k">Order confirmed</td><td>System</td><td>Client accepts + PI issued (principal) or PO confirmed (agency)</td><td>Cancellation no longer free</td></tr>
+      <tr><td class="k">Deposit + commission</td><td>System</td><td>Payment recorded against the milestone</td><td>See amounts due, pay</td></tr>
+      <tr><td class="k">Packaging templates</td><td>Client, then agent</td><td>Artwork uploaded; agent approves against dieline and label rules</td><td>Upload and revise artwork</td></tr>
+      <tr><td class="k">In production</td><td>Agent</td><td>Manual — the risky one; ex-works ETA required; stale after 5 working days triggers an alert</td><td>See ETA</td></tr>
+      <tr><td class="k">QC inspection</td><td>System</td><td>Inspection report uploaded; pass/fail set on the report</td><td>See report if visible</td></tr>
+      <tr><td class="k">Balance 70%</td><td>System</td><td>Balance invoice issued on QC pass; payment recorded</td><td>Pay</td></tr>
+      <tr><td class="k">Forwarder connected</td><td>Agent</td><td>Forwarder and booking reference recorded; cargo-ready date set</td><td>See ETD</td></tr>
+      <tr><td class="k">Shipped → EU port</td><td>System</td><td>B/L or AWB and tracking uploaded; ETA from the forwarder or tracking feed</td><td>See ETA, download docs</td></tr>
+      <tr><td class="k">Delivered → Completed</td><td>Client or agent</td><td>Client confirms receipt, or agent closes after N days; supplier performance updated</td><td>Confirm, rate, reorder</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="rules">
+    <div class="rule"><div class="k">Client edit rules</div><div>Full edit until <b>Spec frozen</b>. After that a <b>change request</b> the agent accepts or rejects (it may reopen the RFQ). After <b>Order confirmed</b> only agents change quantity, spec or packaging, and the platform records the cost and time impact. Cancellation is free until Order confirmed, minus sample costs incurred.</div></div>
+    <div class="rule"><div class="k">Multi-line reality</div><div>A request has lines; lines can end up with different suppliers, lead times and outcomes. Sourcing status is per line. Execution groups lines into POs per supplier and shipments; the client sees a roll-up per line ("3 of 5 lines in production").</div></div>
+    <div class="rule"><div class="k">Repeat and cross-sell orders</div><div>A repeat order references the same Product and spec version and skips the sourcing lane unless the agent flags a re-quote. Items picked from a factory range create request lines pre-linked to that supplier: no RFQ, straight to Negotiating → Offer ready.</div></div>
+  </div>
+</section>
+
+<section id="data">
+  <div class="eyebrow">05 · Data per milestone (Cristina's method)</div>
+  <h2>What each milestone stores, who enters it, what the client sees</h2>
+  <p class="muted" style="max-width:72ch">Field names are working names for the v0.3 ER model. Internal-only fields never appear in a client response.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Client milestone</th><th>Internal states</th><th>Data captured</th><th>Entered by</th><th>Client sees</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Request received</td><td>Draft · Submitted · In review</td><td class="f">request_id, client_id, agent_id, submitted_at<br>line: product_ref, name, description, materials, customisation, qty_first, reorder_interval, volume_12m, target_delivery, destination, incoterm_wanted, client_ref_links[], client_ref_images[] (never supplier-facing), completeness_score</td><td>Client; agent assigns</td><td>Everything entered; agent questions</td></tr>
+      <tr><td class="k">Finding supplier</td><td>Spec frozen · Cost model + target price · RFQ out · Quotes in · Shortlist top 5 · Negotiating</td><td class="f">spec_version, spec_fields, supplier_facing_images[]<br>cost_model (material floor, process, est_prod_cost), uplift_pct, target_price, target_confirmed_by<br>rfq_id, sent_at, files[]<br>participation: supplier_id, status (contacted / quoted / shortlisted / negotiating / selected / backup / dropped), reason, notes<br>quote: raw fields, currency, incoterm, port, moq, price_breaks[], lead_days, valid_until, deviations, weights, normalised_usd_pc, source_file</td><td>Agent; automation (RFQ generator, quote extraction, poller)</td><td>Milestone; "N contacted, M quoted"; no names, no prices</td></tr>
+      <tr><td class="k">FOB price confirmed ▲</td><td>Offer ready</td><td class="f">offer_id, line_id, options[] (label, unit_price_ladder, moq, lead_days, deviations_plain, sample_cost, payment_terms, valid_until, docs_included)<br>internal: selected_supplier_id, backup_supplier_id, margin_rule_id<br>factory_range: sanitised items[] from the selected supplier's price list / catalogue</td><td>Agent publishes; admin approves range</td><td>The offer; accept / changes / decline; "More from this factory"</td></tr>
+      <tr><td class="k">Sample approved ▲</td><td>Sample ordered → received → approved</td><td class="f">sample_id, cost, paid_by, courier, tracking, received_at, photos[], deviations_vs_spec, verdict, approved_by, approved_at</td><td>Agent orders; client approves</td><td>Status, photos, approve / reject</td></tr>
+      <tr><td class="k">Order confirmed ▲</td><td>Order confirmed · Deposit + commission · Packaging templates</td><td class="f">order_id ← request_id, offer_id; lines[] (line_id, product_id, spec_version, qty, unit_price, total); commercial_mode; pi_number; incoterm; internal: po[] (supplier_id, qty, factory_price)<br>payment_milestones[] (deposit_pct, fee, balance_pct, due_on, paid_at, reference)<br>artwork[] (file, dieline, carton_spec, label_spec, status, approved_by); compliance_docs_required[]</td><td>Client pays and uploads artwork; agent confirms</td><td>PI / invoice, amounts due, artwork status, locked qty and price</td></tr>
+      <tr><td class="k">In production · ETA</td><td>In production</td><td class="f">po_id, production_start, exworks_eta, progress_notes[], photos[], last_update_at (stale alert)</td><td>Agent (manual)</td><td>Ex-works ETA; photos if shared</td></tr>
+      <tr><td class="k">QC passed · 70% due ▲</td><td>QC inspection · Balance 70%</td><td class="f">inspection_id, inspector, date, aql_level, sample_size, defects[], report_file, result (pass / fail / rework), visible_to_client<br>balance_invoice, due_on, paid_at</td><td>Agent uploads; client pays</td><td>Pass / fail, report if visible, amount due</td></tr>
+      <tr><td class="k">Shipped · ETA</td><td>Forwarder connected · Shipped ex-works · Departed origin · EU port / customs</td><td class="f">shipment_id, forwarder, booking_ref, mode (sea / air / rail), container_or_awb, bl_number, packing_list, cargo_ready, etd, eta_port, customs_status, landed_cost_actual</td><td>Agent / forwarder; automation (tracking)</td><td>ETD, ETA, tracking, documents</td></tr>
+      <tr><td class="k">Delivered ▲</td><td>Delivered · Completed</td><td class="f">delivered_at, confirmed_by, issues[], claims[], reorder_link; internal: supplier_performance (on_time, defect_rate, quote_accuracy) updated</td><td>Client confirms; agent closes</td><td>Confirm, rate, reorder</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="boundary">
+  <div class="eyebrow">06 · Anonymity boundary</div>
+  <h2>Quote is internal, Offer is what the client sees</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Field</th><th>Quote (internal)</th><th>Offer (client)</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Supplier</td><td>Company, contact, channel, grade, USCC, verdict</td><td class="no">Absent — option label A / B / C only</td></tr>
+      <tr><td class="k">Location</td><td>City, port, factory address</td><td>"China" and the loading port only</td></tr>
+      <tr><td class="k">Price</td><td>Raw as quoted + normalised USD/pc; margin rule applied; target price alongside</td><td>One all-in unit price per quantity step</td></tr>
+      <tr><td class="k">Currency · incoterm · port</td><td>As quoted (CNY/USD, EXW/FOB, any port)</td><td>Standardised (USD, FOB + port, or DDP if we ship)</td></tr>
+      <tr><td class="k">MOQ &amp; price breaks</td><td>As quoted</td><td>Yes</td></tr>
+      <tr><td class="k">Lead time · validity</td><td>As quoted</td><td>Yes (our validity may be shorter)</td></tr>
+      <tr><td class="k">Deviations from spec</td><td>Supplier's wording, verified against weights/µm</td><td>Plain-language deviations, our verdict</td></tr>
+      <tr><td class="k">Tooling · sample cost</td><td>As quoted</td><td>Yes, with our handling</td></tr>
+      <tr><td class="k">Payment terms</td><td>Factory terms (30/70, T/T…)</td><td>Our terms (principal) or factory terms (agency)</td></tr>
+      <tr><td class="k">Weights · carton · CBM</td><td>Yes (lie detector vs material floor)</td><td>Carton and CBM for freight planning</td></tr>
+      <tr><td class="k">Factory range</td><td>Raw price list / catalogue PDF with logos and contacts</td><td>Sanitised items only, labelled "Factory F-0042"</td></tr>
+      <tr><td class="k">Source file</td><td>The xlsx / PDF / chat export</td><td class="no">Never</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 style="margin-top:28px">Enforcement lives in the data layer</h3>
+  <ul class="plain">
+    <li>Supplier tables sit in a separate schema; the client-facing API has no join path to them.</li>
+    <li>Every client-visible text or file passes a leak check before publish: supplier names from the DB, Alibaba/1688 URLs, WeChat IDs — the same discipline as the OOXML grep on RFQ files, applied on the way out.</li>
+    <li>Images are agent-approved, EXIF-stripped and logo-cropped; supplier originals stay internal. Factory ranges are re-rendered by us, never the factory's own PDF.</li>
+    <li>Documents default to internal; an agent flips each one to client-visible. Types that inherently name the factory (factory PI, B/L, manufacturer-named test reports) are replaced in principal mode by our own PI/invoice and applicant-named reports.</li>
+    <li>Audit log of everything a client has been shown; <code>disclosed_to</code> on a supplier once any client has seen its name.</li>
+  </ul>
+
+  <figure>
+    <div class="fig">
+    <svg viewBox="0 0 960 130" role="img" aria-label="Same-factory cross-sell: the supplier's raw price list or catalogue is sanitised by an agent into an anonymised range, published across the anonymity boundary as More from this factory, where the client selects items that become new request lines pre-linked to that supplier.">
+      <defs>
+        <marker id="x1" class="mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+        <marker id="x2" class="mk-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <rect class="bx-int" x="20" y="30" width="190" height="50" rx="4"/>
+      <text class="t" x="115" y="51" text-anchor="middle">Price list · catalogue</text>
+      <text class="ts" x="115" y="68" text-anchor="middle">raw PDF, logos, contacts</text>
+      <rect class="bx-us" x="250" y="30" width="180" height="50" rx="4"/>
+      <text class="t" x="340" y="51" text-anchor="middle">Sanitised range</text>
+      <text class="ts" x="340" y="68" text-anchor="middle">crop logos · strip names · re-render</text>
+      <line class="wall" x1="470" y1="14" x2="470" y2="118"/>
+      <rect class="bx-client" x="510" y="30" width="180" height="50" rx="4"/>
+      <text class="t" x="600" y="51" text-anchor="middle">More from this factory</text>
+      <text class="ts" x="600" y="68" text-anchor="middle">"Factory F-0042" · client selects</text>
+      <rect class="bx-int" x="730" y="30" width="210" height="50" rx="4"/>
+      <text class="t" x="835" y="51" text-anchor="middle">New request lines</text>
+      <text class="ts" x="835" y="68" text-anchor="middle">pre-linked to supplier → quick quote</text>
+      <line class="ln" x1="210" y1="55" x2="248" y2="55" marker-end="url(#x1)"/>
+      <line class="ln-acc" x1="430" y1="55" x2="508" y2="55" marker-end="url(#x2)"/>
+      <text class="ta" x="469" y="98" text-anchor="middle">agent publishes</text>
+      <line class="ln" x1="690" y1="55" x2="728" y2="55" marker-end="url(#x1)"/>
+      <text class="ts" x="115" y="104" text-anchor="middle">internal</text>
+      <text class="ts" x="835" y="104" text-anchor="middle">skips RFQ → Negotiating → Offer ready</text>
+    </svg>
+    </div>
+    <figcaption>Bogdan's "Piotr products selection" as a mechanism. The commercial logic is sound — more volume with one factory means a better price, one consolidated shipment and one QC trip. The raw catalogue never crosses the line; catalogue images often carry watermarks, and a factory's catalogue may include items it trades rather than makes, so each range item carries a "made here / sourced by them" flag when known.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="fig">
+    <svg viewBox="0 0 960 300" role="img" aria-label="Two money-flow modes side by side. Principal mode: factory ships to our export entity, which invoices the client; the factory name stays off client-facing paperwork except the GPSR product label on unbranded goods. Agency mode: factory ships and invoices the client directly; the factory name appears on the PI, bill of lading, customs entry, test reports, product label and the deposit wire.">
+      <defs>
+        <marker id="m6" class="mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+        <marker id="m7" class="mk-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker>
+      </defs>
+      <text class="t" x="20" y="24">Principal mode — client pays us</text>
+      <text class="ts" x="20" y="42">factory identity stays inside our paperwork</text>
+      <rect class="bx-int" x="20" y="64" width="110" height="46" rx="4"/><text class="t" x="75" y="92" text-anchor="middle">Factory</text>
+      <rect class="bx-us" x="180" y="64" width="130" height="46" rx="4"/><text class="t" x="245" y="86" text-anchor="middle">Our export entity</text><text class="ts" x="245" y="101" text-anchor="middle">or partner exporter</text>
+      <rect class="bx-client" x="360" y="64" width="100" height="46" rx="4"/><text class="t" x="410" y="92" text-anchor="middle">Client</text>
+      <line class="ln" x1="130" y1="87" x2="178" y2="87" marker-end="url(#m6)"/><text class="ts" x="154" y="79" text-anchor="middle">goods</text>
+      <line class="ln-acc" x1="310" y1="87" x2="358" y2="87" marker-end="url(#m7)"/><text class="ts" x="334" y="79" text-anchor="middle">our PI</text>
+      <circle class="dot-ok" cx="28" cy="150" r="4"/><text class="ts" x="40" y="154">Invoice and 30 / 70 wires: to us — commission inside the all-in price</text>
+      <circle class="dot-ok" cx="28" cy="174" r="4"/><text class="ts" x="40" y="178">B/L shipper and customs entry: export entity</text>
+      <circle class="dot-ok" cx="28" cy="198" r="4"/><text class="ts" x="40" y="202">Forwarder: ours or the exporter's — the client's forwarder never meets the factory</text>
+      <circle class="dot-ok" cx="28" cy="222" r="4"/><text class="ts" x="40" y="226">Test reports: issued to the applicant (us or client)</text>
+      <circle class="dot-bad" cx="28" cy="246" r="4"/><text class="ts" x="40" y="250">Product label (GPSR): client brand if private label —</text>
+      <text class="tw" x="40" y="266">factory name and address if the goods are unbranded</text>
+      <line class="ln-base" x1="490" y1="20" x2="490" y2="280"/>
+      <text class="t" x="520" y="24">Agency mode — client pays the factory</text>
+      <text class="ts" x="520" y="42">factory identity is on the first wire and the first container</text>
+      <rect class="bx-int" x="520" y="64" width="110" height="46" rx="4"/><text class="t" x="575" y="92" text-anchor="middle">Factory</text>
+      <rect class="bx-client" x="840" y="64" width="100" height="46" rx="4"/><text class="t" x="890" y="92" text-anchor="middle">Client</text>
+      <line class="ln" x1="630" y1="87" x2="838" y2="87" marker-end="url(#m6)"/><text class="ts" x="734" y="79" text-anchor="middle">goods · factory PI · B/L</text>
+      <rect class="bx-us" x="690" y="112" width="90" height="34" rx="4"/><text class="t" x="735" y="134" text-anchor="middle">Us</text>
+      <path class="ln-acc" d="M780 129 H890 V112" marker-end="url(#m7)" stroke-dasharray="5 3"/><text class="ts" x="835" y="144" text-anchor="middle">fee invoice</text>
+      <circle class="dot-bad" cx="528" cy="174" r="4"/><text class="ts" x="540" y="178">30% deposit wired to the factory's account = company name disclosed</text>
+      <circle class="dot-bad" cx="528" cy="198" r="4"/><text class="ts" x="540" y="202">PI, B/L shipper and customs entry: factory</text>
+      <circle class="dot-bad" cx="528" cy="222" r="4"/><text class="ts" x="540" y="226">Client's forwarder connected to the factory: name on every booking</text>
+      <circle class="dot-bad" cx="528" cy="246" r="4"/><text class="ts" x="540" y="250">Test reports and product label (GPSR): factory unless the client brands it</text>
+      <text class="tw" x="540" y="270">anonymity survives only in the catalog, not in this client's order</text>
+    </svg>
+    </div>
+    <figcaption>Where the factory's name physically appears in each mode, now including Bogdan's two steps — the deposit wire and the forwarder handover. Teal dots: stays inside our paperwork. Red dots: disclosed to the client by necessity. This is why <code>commercial_mode</code> and <code>disclosed_to</code> are fields, not settings.</figcaption>
+  </figure>
+</section>
+
+<section id="ia">
+  <div class="eyebrow">07 · Sections (information architecture)</div>
+  <h2>What the client portal and the internal workspace are made of</h2>
+  <p class="muted" style="max-width:72ch">Bogdan's "separate sections" turned into the two sitemaps below. Same database; two front doors.</p>
+  <div class="ia">
+    <div class="col">
+      <h3><span class="tag">Client portal</span>Seven sections</h3>
+      <ul>
+        <li><b>Dashboard</b><span>All active lines by milestone; actions waiting on the client (accept, approve sample, pay, upload artwork, confirm receipt)</span></li>
+        <li><b>My requests &amp; orders</b><span>Request lines with milestone, offers, orders, ETAs, documents, messages per order</span></li>
+        <li><b>Catalog — previously sourced</b><span>Products with a reference price at MOQ / incoterm / spec version → "request offer"</span></li>
+        <li><b>Proposed by us</b><span>Our proactive picks for this client (Scout pipeline): evidence, price band, our confidence → "request offer"</span></li>
+        <li><b>More from this factory</b><span>Inside an order or an accepted offer: the anonymised range of the selected factory → select → quick quote</span></li>
+        <li><b>Documents &amp; payments</b><span>PI, invoices, inspection reports, B/L, certificates; amounts due and paid</span></li>
+        <li><b>Company &amp; users</b><span>Users and roles, addresses, VAT/EORI, default incoterm, language</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3><span class="tag">Internal workspace</span>Nine sections</h3>
+      <ul>
+        <li><b>Request queue</b><span>Unassigned and assigned lines, completeness score, the "work group" notification</span></li>
+        <li><b>Clients (CRM)</b><span>Companies, users, terms, commercial_mode, forecast accuracy, history, prospects if A6 says yes</span></li>
+        <li><b>Suppliers</b><span>Profile, grade, registry data, contacts and channels, performance, disclosed_to</span></li>
+        <li><b>Price lists &amp; catalogues</b><span>Standing price lists and raw catalogues per supplier; sanitised ranges awaiting approval</span></li>
+        <li><b>RFQs &amp; quotes</b><span>Rounds, participation funnel per line, normalised quotes, comparison view (the Best Prices tabs, automated)</span></li>
+        <li><b>Cost models &amp; target prices</b><span>Material floors, process routes, uplift by category, confirmation log</span></li>
+        <li><b>Pricing rules</b><span>Margin by category and value, FX source and date, validity rules, rounding</span></li>
+        <li><b>Proposals (Scout)</b><span>Candidate products → vetted → published to specific clients</span></li>
+        <li><b>Automation log</b><span>Poller runs, extractions, leak checks, notifications sent, stale-state alerts</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="problems">
+  <div class="eyebrow">08 · Problems in the brief</div>
+  <h2>Nine things that need a decision, not a feature</h2>
+  <div class="problems">
+    <article class="problem">
+      <h3>"Never disclose the factory" cannot be a UI rule</h3>
+      <div class="row"><b>Why it matters</b><div>The factory's name sits on its PI, the B/L shipper field, the customs entry and most test reports — and, per Bogdan's flow, on the 30% deposit wire and the forwarder handover. Under GPSR (Reg. 2023/988) the manufacturer's name, postal and electronic address must be on the product or packaging, and a private-label brand owner is deemed the manufacturer — so unbranded goods carry the factory's name into the client's warehouse.</div></div>
+      <div class="row"><b>Recommendation</b><div>Anonymity is structurally possible only for private-label goods, principal-mode shipments via an agency-controlled export entity, our own forwarder, and reports issued to the applicant. Model it: <code>commercial_mode</code> per order, <code>disclosed_to</code> per supplier, and the catalog stays anonymous to everyone else. Decide whether Bogdan's or Cristina's China entity, or a paid export agent, is the shipper of record.</div></div>
+    </article>
+    <article class="problem">
+      <h3>"Same price for everyone" is a fiction</h3>
+      <div class="row"><b>Why it matters</b><div>A price is a function of spec version, quantity, incoterm, validity and FX date. Publishing "$0.054/pc" without those five attributes creates a promise the next quote cannot keep.</div></div>
+      <div class="row"><b>Recommendation</b><div>Catalog shows a <i>reference price</i> that carries all five. In v1 every catalog order passes an agent confirmation before it becomes an offer; auto-accept within pricing rules comes later, once there is data on how often the reference price holds.</div></div>
+    </article>
+    <article class="problem">
+      <h3>"They should tell the truth" about repeat volume needs a mechanism</h3>
+      <div class="row"><b>Why it matters</b><div>A forecast field costs the client nothing to inflate and wins them a lower price. Negotiating with factories on inflated volume burns credibility with the factory, not the client.</div></div>
+      <div class="row"><b>Recommendation</b><div>Structured forecast (first-order qty, reorder interval, 12-month volume). The offer shows two prices: trial and committed-volume. The committed price is a framework that reverts or trues up if the volume is not met. The platform tracks forecast vs actual per client and shows agents a forecast-accuracy score before the next negotiation.</div></div>
+    </article>
+    <article class="problem">
+      <h3>Requests are multi-line and orders split across suppliers</h3>
+      <div class="row"><b>Why it matters</b><div>A single header status is wrong from the first real order: five sleeve SKUs from one factory, toploaders from another, albums still unquoted.</div></div>
+      <div class="row"><b>Recommendation</b><div>Status per line in sourcing, per PO / shipment in execution, roll-up for the client. This is the single most important schema decision.</div></div>
+    </article>
+    <article class="problem">
+      <h3>"Agent decides per product" still needs a T&amp;C default</h3>
+      <div class="row"><b>Why it matters</b><div>Without a written default, the first client who finds their product in the catalog has a dispute with no anchor — and clients selling on the same marketplace will find it.</div></div>
+      <div class="row"><b>Recommendation</b><div>Client agreement states: "we may offer sourced products to other clients unless exclusivity is agreed in writing", with an optional paid exclusivity window. The per-product decision then operates inside a rule.</div></div>
+    </article>
+    <article class="problem">
+      <h3>The KOFF chain</h3>
+      <div class="row"><b>Why it matters</b><div>Order 312 came from a KOFF customer through KOFF. Either KOFF is a partner tier that sees its sub-clients' orders, or its customers become direct clients — and Bogdan's employment conflict applies either way.</div></div>
+      <div class="row"><b>Recommendation</b><div>Decide the tier before the schema (Q A2). A partner tier is one extra table and a visibility rule now; retrofitting it later means migrating every order's ownership.</div></div>
+    </article>
+    <article class="problem">
+      <h3>Adoption</h3>
+      <div class="row"><b>Why it matters</b><div>CRMs die when agents stop updating them; then the client portal shows stale milestones and the WhatsApp questions come back.</div></div>
+      <div class="row"><b>Recommendation</b><div>Status changes as by-products of work (see the state table), stale-state alerts after five working days, nine client milestones rather than twenty-four, and one named owner of status freshness (Q G3).</div></div>
+    </article>
+    <article class="problem">
+      <h3>Time budget</h3>
+      <div class="row"><b>Why it matters</b><div>The platform earns nothing itself; only client orders do. A custom build is realistic at 4–6 weeks solo for v1 including migration from the tracker sheets — and v0.2 added a supplier funnel, cost models, payment milestones and factory ranges to the scope.</div></div>
+      <div class="row"><b>Recommendation</b><div>Time-box to 4 weeks, internal-first; factory ranges and proposals are v1.1. Kill condition: fewer than three paying clients with active orders at go-live means Sheets plus a thin portal would have been enough. Validation test for the catalog hypothesis: send a PDF price list of sourced products to current clients before writing any marketplace code.</div></div>
+    </article>
+    <article class="problem">
+      <h3>Two payment vocabularies</h3>
+      <div class="row"><b>Why it matters</b><div>Bogdan's flow says "send 30% + commission"; Marko decided "one all-in price, margin hidden". Both are legitimate, but they are different products: a visible commission on top of a factory price is agency mode; a single price is principal mode. A client shown both wordings will ask what the commission is on the all-in price.</div></div>
+      <div class="row"><b>Recommendation</b><div>Per client, one vocabulary, driven by <code>commercial_mode</code>: principal clients see "30% deposit / 70% on QC pass" against our invoice; agency clients see "30% deposit to the factory + our fee" and know the factory. Decide which one Piotr's team is on before the first offer goes out (Q M1).</div></div>
+    </article>
+  </div>
+</section>
+
+<section id="automation">
+  <div class="eyebrow">09 · Automation the model must support</div>
+  <h2>Hooks to design in from day one</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Hook</th><th>Trigger → action</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Cost model draft</td><td>Spec frozen → Claude drafts material floor, process route and estimated production cost for the agent to confirm; uplift applied → target price</td><td>Done by hand for ~15 products (mats, steppers, chairs, pumps, lamps, sleeves); the method is documented</td></tr>
+      <tr><td class="k">RFQ generator</td><td>Target price confirmed → one-sheet xlsx + fillable PDF, Chinese-first supplier columns, USD/set; participation rows created</td><td>Built three times as scripts (312, 3210, fitness); becomes a platform function</td></tr>
+      <tr><td class="k">Quote extraction</td><td>Quote file uploaded → structured Quote → normalised USD/pc, currency and unit traps flagged, lie-detector checks against weights</td><td>Done by hand for 13 fitness and 7 sleeve files; the traps are documented</td></tr>
+      <tr><td class="k">Poller</td><td>New Alibaba/1688 message → Quote or Message row via the service account; draft reply for approval</td><td>Architecture decided Aug 2026; Google Sheets was the placeholder store</td></tr>
+      <tr><td class="k">Range sanitiser</td><td>Price list / catalogue uploaded → items extracted, logos cropped, names stripped → range awaiting admin approval</td><td>New in v0.2; manual first, automate once the leak check is trusted</td></tr>
+      <tr><td class="k">Landed-cost engine</td><td>HS code → TARIC duty + AD-duty check + freight estimate → landed cost on the offer</td><td>Needed for Q C3; the shelving AD case shows why</td></tr>
+      <tr><td class="k">Notifications</td><td>Milestone change → email (WhatsApp Business later) to the client; new request → work-group message; stale-state alert to the agent</td><td>The direct replacement for status questions</td></tr>
+      <tr><td class="k">Leak check</td><td>Any client-visible publish → scan for supplier names, URLs, WeChat IDs, EXIF</td><td>Manual today (OOXML grep); must be automatic on the client side</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="questions">
+  <div class="eyebrow">10 · Open questions</div>
+  <h2>49 questions, grouped by area</h2>
+  <div class="legend"><span><span class="st">★</span> blocks the data model — answer first</span><span><span class="pa">proposed answer</span> — from the team's input, needs Marko's confirmation</span><span>Codes are stable; reply by code.</span></div>
+  <div class="qgroups">
+    <div class="qg"><h3><span class="g">A</span>Clients &amp; accounts</h3><ol>
+      <li class="block"><span class="c">A1</span><span>Which three clients go on it first? (Piotr's team is implied by Bogdan's messages.)</span></li>
+      <li class="block"><span class="c">A2</span><span>Partner tier for KOFF — yes or no?</span></li>
+      <li><span class="c">A3</span><span>Several users per client company, with roles?</span></li>
+      <li><span class="c">A4</span><span>Invite-only onboarding, or self-signup with company verification?</span></li>
+      <li><span class="c">A5</span><span>UI languages — EN, PL, RO, HR?</span></li>
+      <li><span class="c">A6</span><span>Do prospects (Pevex, the window factory) live in it as leads, or is "CRM" only paying clients?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">B</span>Request intake</h3><ol>
+      <li class="block"><span class="c">B1</span><span>What must a request contain before an agent may accept it? (No factory ever received a complete brief on KOFF.)</span></li>
+      <li><span class="c">B2</span><span>Do we ask the client's target price?<span class="ans">No — derive it: cost model + uplift (Bogdan), then confirm. Optional "walk-away price" from the client.</span></span></li>
+      <li class="block"><span class="c">B3</span><span>Forecast fields: first-order qty, reorder interval, 12-month volume — and the two-price offer?</span></li>
+      <li><span class="c">B4</span><span>Client reference images (often competitor packaging) kept separate from supplier-facing images?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">C</span>Offers</h3><ol>
+      <li class="block"><span class="c">C1</span><span>One option per line, or up to three?</span></li>
+      <li><span class="c">C2</span><span>Offer validity period?</span></li>
+      <li><span class="c">C3</span><span>Show a landed-cost estimate, or FOB only?</span></li>
+      <li><span class="c">C4</span><span>Is click-to-accept binding?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">D</span>Orders</h3><ol>
+      <li class="block"><span class="c">D1</span><span>Payment milestones and who invoices in each mode?<span class="ans">30% at order confirmation, 70% on QC pass (Bogdan). Open: to whom the money goes in each mode — see M1.</span></span></li>
+      <li><span class="c">D2</span><span>Who arranges freight — the client's forwarder or ours (Lež)?<span class="ans">Bogdan: "connect forwarder with factory". Who the forwarder is decides disclosure — see M6.</span></span></li>
+      <li><span class="c">D3</span><span>Importer of record is always the client?</span></li>
+      <li><span class="c">D4</span><span>Partial shipments allowed?</span></li>
+      <li><span class="c">D5</span><span>Default incoterm?<span class="ans">FOB, per Bogdan's "FOB price confirmed" milestone and the Ningbo standardisation on KOFF.</span></span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">E</span>Samples</h3><ol>
+      <li><span class="c">E1</span><span>Separate flow with its own status?<span class="ans">Yes — a default step between FOB confirmed and order confirmation (Bogdan), skippable for repeats.</span></span></li>
+      <li><span class="c">E2</span><span>Who pays for samples and courier?</span></li>
+      <li><span class="c">E3</span><span>Approval with photos in the platform?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">F</span>Quality control</h3><ol>
+      <li><span class="c">F1</span><span>Who inspects — Bogdan/Cristina or a third party?</span></li>
+      <li><span class="c">F2</span><span>Inspection reports visible to the client?<span class="ans">At least the pass/fail — "QC completed" is one of Bogdan's five client milestones and gates the 70%.</span></span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">G</span>Communication</h3><ol>
+      <li class="block"><span class="c">G1</span><span>An in-platform thread per order replacing WhatsApp — will Bogdan and Cristina actually use it?</span></li>
+      <li><span class="c">G2</span><span>Notification channels — email now, WhatsApp Business API later? Does the "work group" step become a WhatsApp notification from the platform?</span></li>
+      <li><span class="c">G3</span><span>Who owns status freshness, and what SLA?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">H</span>Catalog &amp; proposals</h3><ol>
+      <li class="block"><span class="c">H1</span><span>The unit is product + spec version?</span></li>
+      <li><span class="c">H2</span><span>Customisation as structured options (logo, colour, packaging) or free text?</span></li>
+      <li><span class="c">H3</span><span>Do Scout Report picks go into the catalog, and do subscribers get catalog access?<span class="ans">Picks get their own "Proposed by us" section (Bogdan). Subscriber access still open.</span></span></li>
+      <li><span class="c">H4</span><span>"Request offer" only, or "order now"?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">I</span>Supplier DB</h3><ol>
+      <li><span class="c">I1</span><span>Migrate the existing verdicts, USCC data and Best Prices tabs?</span></li>
+      <li><span class="c">I2</span><span>Which performance fields — on-time, defect rate, quote accuracy?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">J</span>Pricing rules</h3><ol>
+      <li class="block"><span class="c">J1</span><span>Margin logic by category or order value?</span></li>
+      <li><span class="c">J2</span><span>Currency shown and FX handling?</span></li>
+      <li><span class="c">J3</span><span>When is a reference price stale?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">K</span>Legal</h3><ol>
+      <li><span class="c">K1</span><span>T&amp;C for catalog resale and exclusivity?</span></li>
+      <li><span class="c">K2</span><span>E-acceptance of offers as contract?</span></li>
+      <li><span class="c">K3</span><span>EU hosting and GDPR?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">L</span>Tech</h3><ol>
+      <li><span class="c">L1</span><span>Stack and hosting — Postgres with row-level security fits the tenant and supplier-schema isolation; Cloudflare or Supabase both work.</span></li>
+      <li><span class="c">L2</span><span>Google Sheets export during the transition?</span></li>
+      <li><span class="c">L3</span><span>API for the poller and the RFQ generator?</span></li>
+    </ol></div>
+    <div class="qg"><h3><span class="g">M</span>Raised by the team's input</h3><ol>
+      <li class="block"><span class="c">M1</span><span>Piotr's team: principal or agency mode? "30% + commission" only works as written if they pay the factory and know it.</span></li>
+      <li><span class="c">M2</span><span>Does the 20% target-price uplift vary by category, and who owns the table?</span></li>
+      <li><span class="c">M3</span><span>Is the target price confirmed internally, or with the client? Does the client ever see it?</span></li>
+      <li><span class="c">M4</span><span>Standing price lists vs RFQ quotes: who keeps a price list's validity current, and does a price-list price ever go to a client without a fresh quote?</span></li>
+      <li><span class="c">M5</span><span>Factory ranges: who sanitises, and is a re-rendered list acceptable to the client instead of the factory's own catalogue?</span></li>
+      <li><span class="c">M6</span><span>Forwarder: the client's own or ours? Whoever books learns the factory's name.</span></li>
+      <li><span class="c">M7</span><span>Client milestones: Bogdan's five, or the nine proposed here?</span></li>
+    </ol></div>
+  </div>
+</section>
+
+<section id="confidence">
+  <div class="eyebrow">11 · Confidence &amp; next step</div>
+  <h2>How sure, and what happens now</h2>
+  <div class="conf">
+    <div class="c"><span class="pct">90%</span><span class="what">Bogdan's internal sequence is the right state chain — it matches how the last three orders were actually worked.</span></div>
+    <div class="c"><span class="pct">85%</span><span class="what">Structural model — five top-level entities, three client-side objects, per-line status; supported by Orders 312 and 3210.</span></div>
+    <div class="c"><span class="pct">85%</span><span class="what">GPSR and paperwork limits on anonymity — regulation text is clear; lab-report naming practice varies by lab.</span></div>
+    <div class="c"><span class="pct">60%</span><span class="what">Nine client milestones is the right number — five will bring "has it shipped?" back to WhatsApp; more than nine will not get updated.</span></div>
+    <div class="c"><span class="pct">50%</span><span class="what">Catalog-resale demand — unvalidated hypothesis; cheapest test is a PDF price list to current clients.</span></div>
+  </div>
+  <div class="stack" style="margin-top:16px">
+    <div class="callout"><h3>Next step</h3><p>Marko confirms or overrides the verdicts in section 02, then answers the ten ★ questions (A1, A2, B1, B3, C1, D1, G1, H1, J1, M1). Then v0.3: the entity-relationship model with field lists for the five entities and their children, the state machine with allowed transitions per role, and the client-visible vs internal field matrix.</p></div>
+    <div class="callout warn"><h3>Kill condition</h3><p>Fewer than three paying clients with active orders at go-live. Below that, the tracker sheets plus a thin read-only portal cover the same need at zero build cost.</p></div>
+  </div>
+</section>
+
+<footer>
+  <div>Sources: <a href="https://eur-lex.europa.eu/eli/reg/2023/988/oj/eng">Regulation (EU) 2023/988 (GPSR) — EUR-Lex</a> · <a href="https://euverify.com/resource/gpsr-labelling-requirements/">GPSR labelling requirements — euverify</a> · Team input: Bogdan and Cristina, WhatsApp, 22 Sep 2026 · Internal: Order 312 (TCG accessories), SHEDS-3210, KOFF recovery ledger, sourcing automation architecture (Aug 2026).</div>
+  <div>Companion note in the project: <span class="mono">platform/platform_discovery.md</span></div>
+</footer>
+</div>

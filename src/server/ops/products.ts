@@ -147,7 +147,7 @@ export async function createProduct(ctx: Ctx, input: ProductInput): Promise<{ id
   await db.transaction(async (tx) => {
     await tx.insert(products).values({ id, ref, ownerOrgId: input.ownerOrgId ?? null, name: input.name.trim(), category: clean(input.category), description: clean(input.description), hsCode: clean(input.hsCode), unit: clean(input.unit) ?? "pcs", visibility: "private", referenceCurrency: "USD", createdBy: ctx.userId, createdAt: at, updatedAt: at });
     await tx.insert(productSpecs).values({ id: uuidv7(), productId: id, version: 1, fields: {}, createdAt: at });
-    await logActivity(tx, { orgId: input.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "product_created", ref, name: input.name.trim() } });
+    await logActivity(tx, { orgId: input.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: id, type: "product_created", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Product ${ref} created`, ref, name: input.name.trim() } });
   });
   return { id, ref };
 }
@@ -173,7 +173,7 @@ export async function updateProduct(ctx: Ctx, id: string, input: ProductInput & 
   }
   await db.transaction(async (tx) => {
     await tx.update(products).set(patch).where(eq(products.id, id));
-    await logActivity(tx, { orgId: p.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "product_updated", ref: p.ref, changed: Object.keys(input) } });
+    await logActivity(tx, { orgId: p.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: id, type: "product_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Product ${p.ref} updated`, ref: p.ref, changed: Object.keys(input) } });
   });
   return { ref: p.ref };
 }
@@ -229,7 +229,7 @@ export async function unpublishProduct(ctx: Ctx, id: string): Promise<{ ref: str
   const at = now();
   await db.transaction(async (tx) => {
     await tx.update(products).set({ visibility: "private", updatedAt: at }).where(eq(products.id, id));
-    await logActivity(tx, { orgId: p.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "product_unpublished", ref: p.ref } });
+    await logActivity(tx, { orgId: p.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: id, type: "product_unpublished", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Product ${p.ref} unpublished`, ref: p.ref } });
   });
   return { ref: p.ref };
 }
@@ -247,7 +247,7 @@ export async function uploadProductImage(ctx: Ctx, p: { productId: string; kind:
     const f = await storeUpload(tx, { orgId: p.kind === "clean" ? ctx.orgId : prod.ownerOrgId ?? ctx.orgId, userId: ctx.userId, data: p.data, mime: p.mime, originalName: p.filename, entity: "product", entityId: prod.id, visibility: p.kind === "clean" ? "client" : "internal", at });
     const imageId = uuidv7();
     await tx.insert(productImages).values({ id: imageId, productId: prod.id, fileId: f.id, kind: p.kind, approvedBy: p.kind === "clean" ? ctx.userId : null, createdAt: at });
-    await logActivity(tx, { orgId: prod.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: prod.id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "image_uploaded", ref: prod.ref, kind: p.kind, filename: p.filename } });
+    await logActivity(tx, { orgId: prod.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: prod.id, type: "product_image_added", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Image added (${p.kind})`, ref: prod.ref, kind: p.kind, filename: p.filename } });
     return { imageId };
   });
 }
@@ -274,7 +274,7 @@ export async function approveImageAsClean(ctx: Ctx, imageId: string): Promise<{ 
     const f = await storeUpload(tx, { orgId: ctx.orgId, userId: ctx.userId, data: Buffer.concat(chunks), mime: row.f.mime, originalName: row.f.originalName, entity: "product", entityId: row.p.id, visibility: "client", at });
     const newId = uuidv7();
     await tx.insert(productImages).values({ id: newId, productId: row.p.id, fileId: f.id, kind: "clean", approvedBy: ctx.userId, createdAt: at });
-    await logActivity(tx, { orgId: row.p.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: row.p.id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "image_approved_clean", ref: row.p.ref, fromImageId: imageId, imageId: newId } });
+    await logActivity(tx, { orgId: row.p.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: row.p.id, type: "image_approved_clean", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: "Image approved as clean", ref: row.p.ref, fromImageId: imageId, imageId: newId } });
     return { imageId: newId };
   });
 }
@@ -291,6 +291,6 @@ export async function removeImage(ctx: Ctx, imageId: string): Promise<void> {
   const at = now();
   await db.transaction(async (tx) => {
     await tx.delete(productImages).where(eq(productImages.id, imageId));
-    await logActivity(tx, { orgId: row.p.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: row.p.id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "image_removed", ref: row.p.ref, kind: row.i.kind } });
+    await logActivity(tx, { orgId: row.p.ownerOrgId ?? ctx.orgId, entityType: "product", entityId: row.p.id, type: "product_image_removed", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Image removed (${row.i.kind})`, ref: row.p.ref, kind: row.i.kind } });
   });
 }

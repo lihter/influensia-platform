@@ -114,7 +114,7 @@ export async function createRange(ctx: Ctx, input: { supplierId: string; orgId: 
   const at = now();
   await db.transaction(async (tx) => {
     await tx.insert(factoryRanges).values({ id, ref, orgId: org.id, supplierId: s.id as never, createdBy: ctx.userId, createdAt: at, updatedAt: at });
-    await logActivity(tx, { orgId: org.id, entityType: "factory_range", entityId: id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "range_created", ref, supplierRef: s.ref, supplierName: s.legalName, orgName: org.name } });
+    await logActivity(tx, { orgId: org.id, entityType: "factory_range", entityId: id, type: "range_created", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Range ${ref} created`, ref, supplierRef: s.ref, supplierName: s.legalName, orgName: org.name } });
   });
   return { id, ref };
 }
@@ -147,7 +147,7 @@ export async function addRangeItem(ctx: Ctx, rangeId: string, input: RangeItemIn
   await db.transaction(async (tx) => {
     await tx.insert(factoryRangeItems).values({ id, rangeId: r.id, productId: input.productId || null, name: input.name.trim(), moq: input.moq ?? null, priceMinorE2: input.priceMinorE2 ?? null, currency: input.currency ?? "USD", unit: clean(input.unit) ?? "pcs", madeHere: input.madeHere ?? null, note: clean(input.note), sortOrder: Number(max) + 1, createdAt: at });
     await tx.update(factoryRanges).set({ leakCheckResult: null, updatedAt: at }).where(eq(factoryRanges.id, r.id));
-    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "range_item_added", ref: r.ref, name: input.name.trim() } });
+    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "range_item_added", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Item added — ${input.name.trim()}`, ref: r.ref, name: input.name.trim() } });
   });
   return { id };
 }
@@ -162,7 +162,7 @@ export async function updateRangeItem(ctx: Ctx, itemId: string, input: RangeItem
   await db.transaction(async (tx) => {
     await tx.update(factoryRangeItems).set({ productId: input.productId || null, name: input.name.trim(), moq: input.moq ?? null, priceMinorE2: input.priceMinorE2 ?? null, currency: input.currency ?? it.currency, unit: clean(input.unit) ?? it.unit, madeHere: input.madeHere ?? null, note: clean(input.note) }).where(eq(factoryRangeItems.id, itemId));
     await tx.update(factoryRanges).set({ leakCheckResult: null, updatedAt: at }).where(eq(factoryRanges.id, r.id));
-    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "range_item_updated", ref: r.ref, itemId } });
+    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "range_item_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: "Range item updated", ref: r.ref, itemId } });
   });
 }
 
@@ -176,7 +176,7 @@ export async function removeRangeItem(ctx: Ctx, itemId: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(factoryRangeItems).where(eq(factoryRangeItems.id, itemId));
     await tx.update(factoryRanges).set({ leakCheckResult: null, updatedAt: at }).where(eq(factoryRanges.id, r.id));
-    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "range_item_removed", ref: r.ref, name: it.name } });
+    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "range_item_removed", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Item removed — ${it.name}`, ref: r.ref, name: it.name } });
   });
 }
 
@@ -193,7 +193,7 @@ export async function uploadRangeItemImage(ctx: Ctx, p: { itemId: string; data: 
     const f = await storeUpload(tx, { orgId: r.orgId, userId: ctx.userId, data: p.data, mime: p.mime, originalName: p.filename, entity: "factory_range", entityId: r.id, visibility: r.publishedAt ? "client" : "internal", at });
     await tx.update(factoryRangeItems).set({ cleanImageFileId: f.id }).where(eq(factoryRangeItems.id, it.id));
     await tx.update(factoryRanges).set({ leakCheckResult: null, updatedAt: at }).where(eq(factoryRanges.id, r.id));
-    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "range_item_image", ref: r.ref, itemId: it.id, filename: p.filename } });
+    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "range_item_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Item image added — ${it.name}`, ref: r.ref, itemId: it.id, filename: p.filename } });
     return { fileId: f.id };
   });
 }
@@ -297,7 +297,7 @@ export async function unpublishRange(ctx: Ctx, rangeId: string): Promise<{ ref: 
   await db.transaction(async (tx) => {
     await tx.update(factoryRanges).set({ publishedAt: null, updatedAt: at }).where(eq(factoryRanges.id, r.id));
     await tx.update(documents).set({ visibility: "internal", updatedAt: at }).where(and(eq(documents.entityType, "factory_range"), eq(documents.entityId, r.id), eq(documents.kind, "factory_range_pdf")));
-    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "document_unpublished", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "range_unpublished", ref: r.ref, label: r.label } });
+    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "range_unpublished", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Range ${r.ref} unpublished`, ref: r.ref, label: r.label } });
   });
   return { ref: r.ref };
 }

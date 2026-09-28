@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { resetDb } from "./helpers";
 
 /**
  * F-11 catalog, F-12/F-25 ranges, F-21 suppliers, F-24 products — against the seed of SPEC §7.
@@ -19,6 +20,8 @@ async function login(page: Page, email: string) {
   await page.click("button[type=submit]");
   await page.waitForURL(/\/(app|ops)(\?|$)/);
 }
+
+test.beforeAll(resetDb); // each spec file starts from the freshly seeded snapshot
 
 test("client catalog: 4 products with reference data, factory range section, no supplier leaks", async ({ page }) => {
   await login(page, "piotr@example.pl");
@@ -124,4 +127,23 @@ test("ops suppliers, products and ranges (AC-SUP-01/02, AC-PRD-01/02, AC-RNG-01)
   await expect(page.locator("header")).toContainText("Piotr's team");
   await expect(page.getByTestId("range-items-ops").getByTestId("range-item-ops")).toHaveCount(12);
   await expect(page.getByTestId("range-pdf-client")).toContainText("Factory-F-0042-range.pdf");
+});
+
+// last: it adds a participation to SUP-0007, which the ops test above counts
+test("range request: Piotr requests an item → line starts in negotiating with the factory pre-selected (createRangeRequest)", async ({ page }) => {
+  await login(page, "piotr@example.pl");
+  await page.goto("/app/catalog");
+  await page.locator("[data-testid=range-card][data-label=F-0042] a").click();
+  await page.waitForURL(/\/app\/ranges\//);
+  await page.getByLabel("Select Deck box 100+").check();
+  await page.getByTestId("request-items").click();
+  const toast = page.locator("[data-sonner-toast]").first();
+  await expect(toast).toContainText(/Request REQ-2026-\d{4} sent — 1 item from Factory F-0042/);
+  const reqRef = /REQ-2026-\d{4}/.exec((await toast.innerText()) ?? "")![0];
+  expect(await page.content()).not.toMatch(FORBIDDEN);
+  await page.goto("/logout");
+  await login(page, "bogdan@influensia.ro");
+  await page.goto(`/ops/lines/${reqRef}-01?tab=sourcing`);
+  await expect(page.locator("[data-supplier='SUP-0007']")).toHaveAttribute("data-status", "selected");
+  await expect(page.getByTestId("line-state")).toHaveAttribute("data-state", "negotiating");
 });

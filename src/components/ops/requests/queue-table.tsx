@@ -25,7 +25,7 @@ type Assign = (input: { lineIds: string[]; agentId: string }) => Promise<ActionR
 const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
 export function SourceBadge({ source }: { source: QueueRow["source"] }) {
-  const kind = source === "repeat" ? "repeat" : source === "catalog" ? "catalog" : source === "agent_on_behalf" ? "range" : "version";
+  const kind = source === "repeat" ? "repeat" : source === "catalog" ? "catalog" : source === "range" ? "range" : "version";
   return <UtilityBadge kind={kind} className="normal-case tracking-normal">{O.source[source]}</UtilityBadge>;
 }
 

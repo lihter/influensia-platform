@@ -19,7 +19,10 @@ export function createAuth(db: Db) {
     baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
     secret: process.env.BETTER_AUTH_SECRET ?? "dev-only-secret-change-me-0123456789abcdef0123456789",
     database: drizzleAdapter(db, { provider: "pg", schema: authSchema }),
-    emailAndPassword: { enabled: true, minPasswordLength: 8 },
+    emailAndPassword: { enabled: true, minPasswordLength: 8, autoSignIn: false }, // invites must never switch the admin's session
+    // Better Auth's built-in limiter is on in production by default (sign-in: 3 / 10 s per IP). The e2e suite signs in
+    // dozens of times from one IP, so playwright.config.ts sets AUTH_RATE_LIMIT=off; never set it in a real deployment.
+    ...(process.env.AUTH_RATE_LIMIT === "off" ? { rateLimit: { enabled: false } } : {}),
     session: {
       expiresIn: 60 * 60 * 24 * 30, // 30 days (D-02)
       updateAge: 60 * 60 * 24,

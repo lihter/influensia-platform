@@ -16,4 +16,10 @@ export type InviteContext = {
   at?: Date;
 };
 
-export const inviteContext = new AsyncLocalStorage<InviteContext>();
+/**
+ * Lives on globalThis: under Turbopack HMR this module can be re-evaluated while `getAuth()` (and its hooks) stay cached,
+ * which would otherwise leave the hooks reading a different AsyncLocalStorage instance than the caller writes to.
+ */
+type G = { __influensiaInviteContext?: AsyncLocalStorage<InviteContext> };
+const g = globalThis as unknown as G;
+export const inviteContext: AsyncLocalStorage<InviteContext> = (g.__influensiaInviteContext ??= new AsyncLocalStorage<InviteContext>());

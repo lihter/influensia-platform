@@ -120,6 +120,11 @@ export const ACTIVITY_TYPES = [
   "payment_recorded", "artwork_submitted", "artwork_decided", "po_updated", "inspection_recorded", "shipment_updated", "eta_changed",
   "document_uploaded", "document_published", "document_unpublished", "leak_check_blocked", "comment_posted", "whatsapp_logged",
   "product_published", "range_published", "user_invited", "state_overridden", "delivery_confirmed", "reorder_created",
+  // admin / master-data events (added in the integration pass)
+  "org_updated", "user_deactivated", "user_reactivated", "pricing_rule_saved", "profile_updated",
+  "supplier_created", "supplier_updated", "contact_added", "product_updated", "product_unpublished", "image_approved_clean",
+  "range_created", "range_item_added", "range_unpublished",
+  "product_created", "product_image_added", "product_image_removed", "supplier_deleted", "contact_updated", "contact_removed", "range_item_updated", "range_item_removed",
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 

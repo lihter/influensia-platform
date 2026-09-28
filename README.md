@@ -14,4 +14,4 @@ Seed users (password `Password123!`): `marko@influensia.ro` (admin), `bogdan@inf
 
 Checks: `npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run test:e2e`
 
-Docs: `docs/FOUNDATION.md` (what exists, module APIs, file ownership) · `docs/ARCHITECTURE.md` · `docs/SPEC.md` · `docs/DESIGN.md`.
+Docs: `docs/RUNBOOK.md` (install, logins, env, tests, Postgres/R2/Resend) · `docs/FOUNDATION.md` (what exists, module APIs, file ownership) · `docs/ARCHITECTURE.md` · `docs/SPEC.md` · `docs/DESIGN.md`.

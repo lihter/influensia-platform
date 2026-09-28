@@ -3,7 +3,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { LayoutDashboard, Inbox, FolderOpen, Package, Factory, Boxes, Building2, Send, Search, Menu, LogOut, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Inbox, FolderOpen, Package, Factory, Boxes, Building2, Send, Search, Menu, LogOut, Settings, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -16,7 +16,7 @@ const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).filter(Boo
  * DESIGN §4.1 — ops sidebar: 232px section-alt rail, white active item with a 3px green left bar, count badges in mono.
  * < 1024px: off-canvas sheet behind a menu button in a slim top bar.
  */
-export function OpsShell({ user, counts, children }: { user: { name: string; email: string; role: string }; counts?: { stale?: number; queue?: number }; children: React.ReactNode }) {
+export function OpsShell({ user, counts, children }: { user: { name: string; email: string; role: string }; counts?: { stale?: number; queue?: number; outbox?: number }; children: React.ReactNode }) {
   const t = useTranslations("nav.ops");
   const tr = useTranslations("roles");
   const pathname = usePathname();
@@ -32,7 +32,8 @@ export function OpsShell({ user, counts, children }: { user: { name: string; ema
     { href: "/ops/suppliers", label: t("suppliers"), icon: Factory, active: is("/ops/suppliers") },
     { href: "/ops/products", label: t("products"), icon: Boxes, active: is("/ops/products") },
     { href: "/ops/clients", label: t("clients"), icon: Building2, active: is("/ops/clients") },
-    { href: "/ops/outbox", label: t("outbox"), icon: Send, active: is("/ops/outbox") },
+    { href: "/ops/outbox", label: t("outbox"), icon: Send, active: is("/ops/outbox"), count: counts?.outbox, countTone: "warning" },
+    { href: "/ops/settings", label: t("settings"), icon: Settings, active: is("/ops/settings") },
   ];
   const nav = (
     <div className="flex h-full flex-col">
@@ -63,7 +64,7 @@ export function OpsShell({ user, counts, children }: { user: { name: string; ema
                   >
                     <it.icon className="size-[18px]" strokeWidth={1.75} />
                     <span className="flex-1">{it.label}</span>
-                    {typeof it.count === "number" && it.count > 0 && <span className={cn("font-mono text-2xs", it.countTone === "warning" ? "text-warning" : "text-muted-foreground")}>{it.count}</span>}
+                    {typeof it.count === "number" && it.count > 0 && <span className={cn("font-mono text-2xs", it.countTone === "warning" ? "text-warning" : "text-muted-foreground")} data-testid="nav-count">{it.count}</span>}
                   </Link>
                 </li>
               ))}

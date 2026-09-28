@@ -10,7 +10,8 @@ import { getDb, type DbOrTx } from "@/db";
 import {
   orders, orderLines, requestLines, requests, organizations, payments, artworks, inspections, shipments, documents, files, comments, activityEvents, offers, offerOptions, samples, factoryRanges,
 } from "@/db/schema/app";
-import { purchaseOrders, suppliers, supplierParticipations, supplierContacts, quotes, supplierPerformance } from "@/db/schema/supplier";
+import { purchaseOrders, suppliers, supplierParticipations, supplierContacts, quotes } from "@/db/schema/supplier";
+import { recordSupplierPerformance } from "@/server/shared/supplier-performance";
 import type { LineState, Milestone, LineException, CommercialMode, PricingDisplay, PaymentKind, PaymentStatus, Payee, ArtworkStatus, PoStatus, InspectionResult, ShipmentMode, ForwarderParty, CustomsStatus, DocumentKind, Visibility } from "@/db/enums";
 import type { PriceBreak } from "@/db/types";
 import { type Ctx, isOps, isAdmin, Forbidden, NotFound } from "@/server/shared/authorize";
@@ -860,22 +861,6 @@ export async function uploadShipmentDocument(ctx: Ctx, orderId: string, kind: "b
 /** delivered → completed by an agent ("Close"); supplier_performance rolls up. */
 export async function closeOrder(ctx: Ctx, orderId: string) {
   return changeOrderState(ctx, orderId, "completed", {});
-}
-
-async function recordSupplierPerformance(tx: DbOrTx, orderId: string, at: Date) {
-  const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-  if (!o) return;
-  const [ship] = await tx.select().from(shipments).where(and(eq(shipments.orderId, orderId), isNull(shipments.deletedAt))).limit(1);
-  const pos = await tx.select({ supplierId: purchaseOrders.supplierId }).from(purchaseOrders).where(and(eq(purchaseOrders.orderId, orderId), isNull(purchaseOrders.deletedAt)));
-  const delivered = ship?.deliveredAt ?? o.deliveredAt ?? at;
-  const onTime = ship?.etaPort ? toIsoDate(delivered)! <= ship.etaPort : null;
-  for (const po of [...new Set(pos.map((p) => p.supplierId))]) {
-    const [perf] = await tx.select().from(supplierPerformance).where(eq(supplierPerformance.supplierId, po)).limit(1);
-    const count = (perf?.ordersCount ?? 0) + 1;
-    const rate = onTime === null ? perf?.onTimeRate ?? null : ((perf?.onTimeRate ?? 0) * (count - 1) + (onTime ? 1 : 0)) / count;
-    if (perf) await tx.update(supplierPerformance).set({ ordersCount: count, onTimeRate: rate, lastOrderAt: delivered, updatedAt: at }).where(eq(supplierPerformance.supplierId, po));
-    else await tx.insert(supplierPerformance).values({ supplierId: po, ordersCount: 1, onTimeRate: rate, lastOrderAt: delivered, updatedAt: at });
-  }
 }
 
 /* ═══════════════════════════ documents on an order ═══════════════════════════ */

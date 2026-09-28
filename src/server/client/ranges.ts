@@ -4,10 +4,12 @@
  * helper (the only sanctioned supplier-schema read for client code — it returns a label, nothing else).
  *
  * "Request these items" creates a request whose lines start in `negotiating` with the factory pre-selected. The
- * participation row lives in the supplier schema, which this module may not import (ESLint boundary), so the insert is
- * a parameterised raw statement keyed by the range's server-only `supplier_id`; nothing is read back from it.
+ * participation row lives in the supplier schema, which this module may not import (ESLint boundary), so it is created
+ * by the shared `createRangeRequest` helper, which returns nothing supplier-shaped.
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { createRangeRequest } from "@/server/shared/range-request";
+import { clientDownloadUrl } from "./documents";
 import { uuidv7 } from "uuidv7";
 import { getDb } from "@/db";
 import { factoryRanges, factoryRangeItems, files, requests, requestLines, orders, orderLines } from "@/db/schema/app";
@@ -79,6 +81,27 @@ export async function listRanges(ctx: Ctx): Promise<ClientRangeSummaryDto[]> {
   });
 }
 
+/**
+ * `/app/orders/[ref]/range` (SPEC 2.2, AC-RNG-02): the published range of the factory behind this order, for this org.
+ * Resolved through the order's lines' factory label (never a supplier id); NotFound for other orgs' orders, orders without
+ * a range, and unpublished ranges (AC-RNG-04).
+ */
+export async function rangeIdForOrder(ctx: Ctx, orderRef: string): Promise<string> {
+  if (!isClient(ctx)) throw new Forbidden("clients only");
+  const db = await getDb();
+  const [o] = await db.select({ id: orders.id }).from(orders).where(and(eq(orders.ref, orderRef), eq(orders.orgId, ctx.orgId), isNull(orders.deletedAt))).limit(1);
+  if (!o) throw new NotFound("order");
+  const ols = await db.select({ lineId: orderLines.requestLineId }).from(orderLines).where(eq(orderLines.orderId, o.id)).orderBy(asc(orderLines.lineNo));
+  for (const l of ols) {
+    const label = await factoryLabelForLine(db, { lineId: l.lineId, orgId: ctx.orgId });
+    if (!label) continue;
+    const [r] = await db.select({ id: factoryRanges.id, publishedAt: factoryRanges.publishedAt }).from(factoryRanges)
+      .where(and(eq(factoryRanges.orgId, ctx.orgId), eq(factoryRanges.label, label), isNull(factoryRanges.deletedAt))).limit(1);
+    if (r?.publishedAt) return r.id;
+  }
+  throw new NotFound("range");
+}
+
 export async function getRange(ctx: Ctx, id: string): Promise<ClientRangeDto> {
   if (!isClient(ctx)) throw new Forbidden("clients only");
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new NotFound("range");
@@ -91,7 +114,7 @@ export async function getRange(ctx: Ctx, id: string): Promise<ClientRangeDto> {
   const l = byLabel.get(labelOf(r.label));
   return ClientRangeDto.parse({
     id: r.id, factoryLabel: labelOf(r.label), yourProducts: [...(l?.names ?? [])], orderRefs: [...(l?.orderRefs ?? [])], publishedAt: r.publishedAt.toISOString(),
-    pdf: pdf ? ClientRangePdfDto.parse({ filename: `Factory-${labelOf(r.label)}-range.pdf`, bytes: pdf.bytes, downloadUrl: `/api/files/${pdf.storageKey}?dl=1&filename=${encodeURIComponent(`Factory-${labelOf(r.label)}-range.pdf`)}` }) : null,
+    pdf: pdf ? ClientRangePdfDto.parse({ filename: `Factory-${labelOf(r.label)}-range.pdf`, bytes: pdf.bytes, downloadUrl: clientDownloadUrl(pdf.storageKey, `Factory-${labelOf(r.label)}-range.pdf`) }) : null,
     items: items.map((i) => ({
       id: i.id, name: i.name, image: itemImage(fileMap.get(i.cleanImageFileId ?? ""), i.id), moq: i.moq, moqLabel: i.moq != null ? `MOQ ${formatQty(i.moq)}` : null, unit: i.unit,
       price: i.priceMinorE2 != null ? { minorE2: i.priceMinorE2, currency: i.currency, unit: i.unit } : null, madeHere: i.madeHere, note: i.note,
@@ -125,18 +148,14 @@ export async function requestRangeItems(ctx: Ctx, input: { rangeId: string; item
       const ref = mkLineRef(requestRef, idx + 1);
       lineRefs.push(ref);
       const qty = Math.max(1, Math.round(wanted.get(it.id) ?? it.moq ?? 1));
-      const participationId = uuidv7();
       await tx.insert(requestLines).values({
         id: lineId, requestId, orgId: ctx.orgId, lineNo: idx + 1, lineRef: ref, productId: it.productId, name: it.name, qtyFirst: qty, unit: it.unit, customisation: userNote,
         state: "negotiating", milestone: "finding_factory", fromRangeId: r.id, sampleRequired: true, lastStateChangeAt: at, createdBy: ctx.userId, createdAt: at, updatedAt: at,
       });
-      // participation `selected` for the range's factory — supplier schema, raw statement (see module comment)
-      await tx.execute(sql`insert into supplier.supplier_participations (id, request_line_id, supplier_id, status, reason, first_contact_at, last_contact_at, created_by, created_at, updated_at)
-        values (${participationId}::uuid, ${lineId}::uuid, ${r.supplierId as unknown as string}::uuid, 'selected', ${`From Factory ${label} range item`}, ${at.toISOString()}::timestamptz, ${at.toISOString()}::timestamptz, ${ctx.userId}, ${at.toISOString()}::timestamptz, ${at.toISOString()}::timestamptz)`);
-      await tx.update(requestLines).set({ selectedParticipationId: participationId as never }).where(eq(requestLines.id, lineId));
+      // participation `selected` for the range's factory + selected_participation_id (supplier schema → shared helper)
+      await createRangeRequest(tx, ctx, { rangeId: r.id, lineId, lineRef: ref, factoryLabel: label, at });
       await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "line_created", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref, name: it.name, qty, unit: it.unit, factoryLabel: label, text: `Requested from Factory ${label} — ${it.name}` } });
       await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "state_changed", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref, from: "draft", to: "negotiating", milestone: "finding_factory", milestoneChanged: true, feed: isFeedState("negotiating"), note: null, factoryLabel: label } });
-      await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "participation_added", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { ref, status: "selected", source: "factory_range", rangeRef: r.ref } });
     }
     for (const u of await opsUsers(tx)) {
       await enqueue({ userId: u.id, toEmail: u.email, template: "ops_new_request", subject: `Range request ${requestRef} (${items.length} lines)`, entityRef: requestRef, payload: { ref: requestRef, lines: lineRefs, rangeRef: r.ref, url: `/ops/requests/${requestRef}` }, idempotencyKey: `ops_new_request:${requestId}:${u.id}`, at }, tx);

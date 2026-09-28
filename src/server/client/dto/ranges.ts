@@ -10,7 +10,7 @@ import { ClientFactoryRangeItemDto } from "./factory-range";
 export const ClientRangePdfDto = z.object({
   filename: z.string(),
   bytes: z.number().int().nonnegative(),
-  /** always /api/files/{client key} */
+  /** always /api/files/{client key}?filename=… (clientDownloadUrl) */
   downloadUrl: z.string(),
 }).strict();
 export type ClientRangePdfDto = z.infer<typeof ClientRangePdfDto>;

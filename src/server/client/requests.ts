@@ -5,6 +5,7 @@
  * `insertRequest()` is the shared core used by the client action (source `portal`/`import`) and by the ops
  * "on behalf" action (source `agent_on_behalf`) — the caller decides org, actor, source and notifications.
  */
+import { clientDownloadUrl } from "./documents";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { z } from "zod";
@@ -277,14 +278,14 @@ export async function getClientRequest(ctx: Ctx, ref: string): Promise<ClientReq
   const entityIds = [req.id, ...lineIds];
 
   const [docRows, cRows, eRows, orgUsers] = await Promise.all([
-    db.select({ d: documents, bytes: files.bytes }).from(documents).innerJoin(files, eq(files.id, documents.fileId))
+    db.select({ d: documents, bytes: files.bytes, storageKey: files.storageKey }).from(documents).innerJoin(files, eq(files.id, documents.fileId))
       .where(and(eq(documents.orgId, ctx.orgId), inArray(documents.entityId, entityIds), eq(documents.visibility, "client"), isNull(documents.deletedAt))).orderBy(desc(documents.createdAt)),
     db.select().from(comments).where(and(eq(comments.orgId, ctx.orgId), inArray(comments.entityId, entityIds), eq(comments.visibility, "client"), isNull(comments.deletedAt))).orderBy(desc(comments.createdAt)).limit(100),
     db.select().from(activityEvents).where(and(eq(activityEvents.orgId, ctx.orgId), inArray(activityEvents.entityId, entityIds), eq(activityEvents.visibility, "client"))).orderBy(desc(activityEvents.createdAt)).limit(300),
     db.select({ id: users.id }).from(users).where(eq(users.orgId, ctx.orgId)),
   ]);
   const orgUserIds = new Set(orgUsers.map((u) => u.id));
-  const docs = docRows.map(({ d, bytes }) => ClientDocumentDto.parse({ id: d.id, filename: d.filename, kind: d.kind, bytes, uploadedAt: d.createdAt.toISOString(), downloadUrl: `/api/app/documents/${d.id}/download` }));
+  const docs = docRows.filter(({ storageKey }) => storageKey.split("/")[4] === "client").map(({ d, bytes, storageKey }) => ClientDocumentDto.parse({ id: d.id, filename: d.filename, kind: d.kind, bytes, uploadedAt: d.createdAt.toISOString(), downloadUrl: clientDownloadUrl(storageKey, d.filename) }));
   const updates = [
     ...cRows.filter((c) => c.kind !== "note").map((c) => ClientUpdateDto.parse({ id: c.id, kind: "comment", at: c.createdAt.toISOString(), text: c.body, authorName: c.authorName, byYou: !!c.authorId && orgUserIds.has(c.authorId), isActionMilestone: false, attachments: [] })),
     ...eRows.filter((e) => isFeedEvent(e.type, e.payload) || e.type === "request_submitted").map((e) => ClientUpdateDto.parse({ id: e.id, kind: "event", at: e.createdAt.toISOString(), text: eventText(e.type, e.payload), authorName: e.actorName, byYou: !!e.actorId && orgUserIds.has(e.actorId), isActionMilestone: typeof e.payload.milestone === "string" && isActionMilestone(e.payload.milestone as never) && e.payload.milestoneChanged === true, attachments: [] })),

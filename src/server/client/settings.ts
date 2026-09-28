@@ -13,9 +13,8 @@ import { logActivity } from "@/server/shared/activity";
 import { now } from "@/server/shared/clock";
 import { ClientAccountDto, ProfileInput, type ClientNotificationPrefDto } from "./dto/settings";
 
-/** Not in ACTIVITY_TYPES yet (see src/server/ops/clients.ts ADMIN_EVENTS); internal-only, rendered via payload.text.
- *  Logged on the organisation (activity_events.entity_id is a uuid; Better Auth user ids are not). */
-const EVENT_PROFILE = "profile_updated" as unknown as ActivityType;
+/** Internal-only, rendered via payload.text. Logged on the organisation (activity_events.entity_id is a uuid; Better Auth user ids are not). */
+const EVENT_PROFILE: ActivityType = "profile_updated";
 
 export { ProfileInput, PasswordInput } from "./dto/settings";
 

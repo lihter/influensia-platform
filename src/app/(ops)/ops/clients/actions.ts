@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authorize } from "@/server/shared/authorize";
 import type { InviteUserInput } from "@/server/ops/admin";
 import {
-  createClient, addClientUser, updateClientSettings, deactivateUser, reactivateUser, resendInvite, inviteUserKeepingSession,
+  createClient, addClientUser, updateClientSettings, deactivateUser, reactivateUser, resendInvite, inviteAsAdmin,
   type CreateClientInput, type AddClientUserInput, type ClientSettingsInput,
 } from "@/server/ops/clients";
 import { toActionError, type ActionResult } from "@/server/shared/http";
@@ -18,7 +18,7 @@ const clientPaths = (orgId?: string) => { revalidatePath("/ops/clients"); if (or
 export async function inviteUserAction(input: InviteUserInput): Promise<ActionResult<{ userId: string; orgId: string; tempPassword: string; inviteToken: string }>> {
   try {
     const ctx = await authorize({ roles: ["admin"] });
-    const r = await inviteUserKeepingSession(ctx, input);
+    const r = await inviteAsAdmin(ctx, input);
     clientPaths(r.orgId);
     return { ok: true, data: { userId: r.userId, orgId: r.orgId, tempPassword: r.tempPassword, inviteToken: r.inviteToken } };
   } catch (e) {

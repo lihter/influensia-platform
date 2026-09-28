@@ -156,12 +156,7 @@ export async function publishDocument(ctx: Ctx, documentId: string, opts: { tx?:
     const r = publishLeakCheck({ filename: d.filename, text }, sources);
     const stored = { ok: r.ok, at: at.toISOString(), hits: r.ok ? [] : r.hits.map((h) => ({ kind: h.kind, match: h.match, where: h.where })) };
     if (!r.ok) {
-      await tx.update(documents).set({ leakCheckResult: stored, updatedAt: at }).where(eq(documents.id, documentId));
-      await logActivity(tx, { orgId: d.orgId, entityType: d.entityType, entityId: d.entityId, type: "leak_check_blocked", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { documentId, filename: d.filename, kind: d.kind, hits: stored.hits } });
-      const entityRef = await refFor(tx, d.entityType, d.entityId);
-      for (const u of (await opsUsers(tx)).filter((u) => u.role === "admin" || u.id === ctx.userId)) {
-        await enqueue({ userId: u.id, toEmail: u.email, template: "ops_leak_blocked", entityRef, subject: `Publish blocked on ${entityRef}: supplier identifier found`, payload: { ref: entityRef, filename: d.filename, hits: stored.hits, url: `/ops` }, idempotencyKey: `ops_leak_blocked:${documentId}:${at.toISOString()}:${u.id}`, at }, tx);
-      }
+      await recordBlockedPublish(tx, ctx, d, stored, at);
       return { documentId, alreadyPublished: false as const, blocked: r.hits };
     }
     const clientKey = withVisibility(f.storageKey, "client");
@@ -227,6 +222,11 @@ export async function deleteDocument(ctx: Ctx, documentId: string) {
 }
 
 /** Dry-run leak check for the publish dialog (no writes). */
+/**
+ * The Publish dialog's first step: runs the same leak check as `publishDocument`. Clicking Publish is the publish attempt,
+ * so a hit on a publishable, still-internal document is recorded exactly like a blocked publish (SPEC AC-DOC-02:
+ * "the timeline has `leak_check_blocked`") — the confirm button then stays disabled.
+ */
 export async function previewPublish(ctx: Ctx, documentId: string): Promise<{ filename: string; kind: DocumentKind; publishable: boolean; result: ReturnType<typeof publishLeakCheck>; hasText: boolean }> {
   if (!isOps(ctx)) throw new Forbidden("ops only");
   const db = await getDb();
@@ -235,7 +235,26 @@ export async function previewPublish(ctx: Ctx, documentId: string): Promise<{ fi
   let text = "";
   const obj = await getStorage().get(f.storageKey);
   if (obj) text = extractText(Buffer.from(await new Response(obj.body as ReadableStream).arrayBuffer()), f.mime, d.filename);
-  return { filename: d.filename, kind: d.kind, publishable: isPublishableKind(d.kind), result: publishLeakCheck({ filename: d.filename, text }, sources), hasText: text.length > 0 };
+  const result = publishLeakCheck({ filename: d.filename, text }, sources);
+  const publishable = isPublishableKind(d.kind) && !INTERNAL_ONLY_DOCUMENT_KINDS.includes(d.kind);
+  if (!result.ok && publishable && d.visibility !== "client") {
+    const at = now();
+    const stored = { ok: false, at: at.toISOString(), hits: result.hits.map((h) => ({ kind: h.kind, match: h.match, where: h.where })) };
+    await db.transaction(async (tx) => recordBlockedPublish(tx, ctx, d, stored, at));
+  }
+  return { filename: d.filename, kind: d.kind, publishable: isPublishableKind(d.kind), result, hasText: text.length > 0 };
+}
+
+type StoredLeakResult = { ok: boolean; at: string; hits: Array<{ kind: string; match: string; where: string }> };
+
+/** A blocked publish: `leak_check_result` on the document, `leak_check_blocked` (internal) + `ops_leak_blocked` to the actor and admins (N-22). */
+async function recordBlockedPublish(tx: DbOrTx, ctx: Ctx, d: { id: string; orgId: string; entityType: EntityType; entityId: string; filename: string; kind: DocumentKind }, stored: StoredLeakResult, at: Date) {
+  await tx.update(documents).set({ leakCheckResult: stored as never, updatedAt: at }).where(eq(documents.id, d.id));
+  await logActivity(tx, { orgId: d.orgId, entityType: d.entityType, entityId: d.entityId, type: "leak_check_blocked", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { documentId: d.id, filename: d.filename, kind: d.kind, hits: stored.hits } });
+  const entityRef = await refFor(tx, d.entityType, d.entityId);
+  for (const u of (await opsUsers(tx)).filter((u) => u.role === "admin" || u.id === ctx.userId)) {
+    await enqueue({ userId: u.id, toEmail: u.email, template: "ops_leak_blocked", entityRef, subject: `Publish blocked on ${entityRef}: supplier identifier found`, payload: { ref: entityRef, filename: d.filename, hits: stored.hits, url: `/ops` }, idempotencyKey: `ops_leak_blocked:${d.id}:${at.toISOString()}:${u.id}`, at }, tx);
+  }
 }
 
 async function refFor(db: DbOrTx, entityType: EntityType, entityId: string): Promise<string> {

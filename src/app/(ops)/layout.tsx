@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { currentCtx, isOps } from "@/server/shared/authorize";
 import { getOpsDashboard } from "@/server/ops/dashboard";
+import { pendingOutboxCount } from "@/server/ops/outbox";
 import { OpsShell } from "@/components/ops/ops-shell";
 
 export const dynamic = "force-dynamic";
@@ -10,9 +11,9 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
   const ctx = await currentCtx();
   if (!ctx) redirect("/login?next=%2Fops");
   if (!isOps(ctx)) notFound();
-  const dash = await getOpsDashboard(ctx).catch(() => null);
+  const [dash, outbox] = await Promise.all([getOpsDashboard(ctx).catch(() => null), pendingOutboxCount().catch(() => 0)]);
   return (
-    <OpsShell user={{ name: ctx.name, email: ctx.email, role: ctx.role }} counts={{ stale: dash?.counts.stale, queue: dash?.counts.unassigned }}>
+    <OpsShell user={{ name: ctx.name, email: ctx.email, role: ctx.role }} counts={{ stale: dash?.counts.stale, queue: dash?.counts.unassigned, outbox }}>
       {children}
     </OpsShell>
   );

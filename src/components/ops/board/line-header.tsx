@@ -67,7 +67,7 @@ export function LineHeader({ line, tab, me }: { line: OpsLine; tab: Tab; me: { i
               {TAB_LABELS[t]}{t === "sourcing" && <span className="ml-1.5 font-mono text-xs text-muted-foreground">{line.participations.length}</span>}
             </Link>
           ))}
-          <span className="ml-auto self-center pb-2 font-mono text-2xs text-muted-foreground">{ts(line.state)}</span>
+          <span className="ml-auto self-center pb-2 font-mono text-2xs text-muted-foreground" data-testid="line-state" data-state={line.state}>{ts(line.state)}</span>
         </nav>
       }
     />

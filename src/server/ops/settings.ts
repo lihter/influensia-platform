@@ -51,8 +51,8 @@ export function ruleExample(rule: { marginPct: number; feePct: number; upliftPct
   return { upliftedE2: Math.round(uplifted), allInE2: allIn, feeE2: fee };
 }
 
-const EVENT_PRICING = "pricing_rule_saved" as unknown as ActivityType; // not in ACTIVITY_TYPES yet — see clients.ts ADMIN_EVENTS
-const EVENT_ORG = "org_updated" as unknown as ActivityType;
+const EVENT_PRICING: ActivityType = "pricing_rule_saved";
+const EVENT_ORG: ActivityType = "org_updated";
 
 export async function getAgencySettings(ctx: Ctx): Promise<AgencySettings> {
   if (!isOps(ctx)) throw new Forbidden("ops only");

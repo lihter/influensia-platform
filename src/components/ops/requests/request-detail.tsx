@@ -123,7 +123,7 @@ export function OpsRequestDetailView({ dto, me, claim, assign }: { dto: OpsReque
         actions={
           <>
             <Button asChild variant="outline"><Link href="/ops/requests/new">{O.requests.newOnBehalf}</Link></Button>
-            {dto.acceptedLineIds.length > 0 && <Button variant="default" disabled title={D.confirmOrderHint(dto.acceptedLineIds.length)}>{D.confirmOrder}</Button>}
+            {dto.acceptedLineIds.length > 0 && <Button asChild variant="default" title={D.confirmOrderHint(dto.acceptedLineIds.length)} data-testid="confirm-order-link"><Link href={`/ops/orders/new?req=${encodeURIComponent(dto.ref)}`}>{D.confirmOrder}</Link></Button>}
           </>
         }
       />

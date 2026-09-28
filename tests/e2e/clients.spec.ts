@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { resetDb } from "./helpers";
 
 /**
  * F-26 clients admin · F-27 outbox · F-01 settings (runs against the e2e seed, see playwright.config.ts):
@@ -20,6 +21,8 @@ async function login(page: Page, email: string, password = PASSWORD) {
   await page.waitForURL(/\/(app|ops)(\?|$)/);
 }
 const logLines = () => { try { return readFileSync(LOG, "utf8").split("\n").filter(Boolean).length; } catch { return 0; } };
+
+test.beforeAll(resetDb); // each spec file starts from the freshly seeded snapshot
 
 test.describe.serial("clients admin, outbox, settings", () => {
   let tempPassword = "";
@@ -44,6 +47,7 @@ test.describe.serial("clients admin, outbox, settings", () => {
     tempPassword = (await dialog.getByTestId("cred-temporary-password").innerText()).trim();
     expect(tempPassword.length).toBeGreaterThan(10);
     await expect(dialog.getByTestId("cred-invite-link")).toContainText("/invite/");
+    // autoSignIn is off: creating the invitee must not switch the admin's session (a client session would 404 on /ops)
     await dialog.getByRole("link", { name: "Open client" }).click();
     await page.waitForURL(/\/ops\/clients\/[0-9a-f-]{36}$/);
     clientUrl = page.url();
@@ -70,10 +74,15 @@ test.describe.serial("clients admin, outbox, settings", () => {
     await page.keyboard.press("Escape");
     const before = logLines();
     const pendingBefore = await pendingRows.count();
+    // the sidebar Outbox badge shows the pending count (pendingOutboxCount)
+    const outboxNav = page.getByTestId("ops-sidebar").locator("a[href='/ops/outbox']");
+    await expect(outboxNav.getByTestId("nav-count")).toHaveText(String(pendingBefore));
+    await expect(page.getByTestId("ops-sidebar").locator("a[href='/ops/settings']")).toBeVisible();
     await page.click("[data-testid=run-worker]");
     await expect(page.getByText(/Worker ran/)).toBeVisible();
     await page.goto("/ops/outbox?status=pending");
     await expect(page.locator("[data-testid=outbox-table] tr[data-testid=data-row]")).toHaveCount(0);
+    await expect(outboxNav.getByTestId("nav-count")).toHaveCount(0);
     expect(logLines()).toBe(before + pendingBefore);
     await page.goto("/ops/outbox?template=auth_invite&status=sent");
     const sentRow = page.locator("[data-testid=outbox-table] tr[data-testid=data-row]").filter({ hasText: "pevex@example.hr" });

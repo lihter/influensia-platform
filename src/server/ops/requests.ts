@@ -30,7 +30,7 @@ export type QueueRow = {
   links: LinkMeta[];
   notDurable: number;
   imagesCount: number;
-  source: RequestSource | "catalog" | "repeat";
+  source: RequestSource | "catalog" | "range" | "repeat";
   submittedAt: string;
   lastChangeAt: string;
   daysSinceChange: number;
@@ -64,7 +64,8 @@ async function linksMetaFor(db: Awaited<ReturnType<typeof getDb>>, lineIds: stri
 
 function sourceOf(lc: LineContext, requestSource: RequestSource): QueueRow["source"] {
   if (lc.isRepeat) return "repeat";
-  if (lc.fromCatalog || lc.fromRangeId) return "catalog";
+  if (lc.fromRangeId) return "range";
+  if (lc.fromCatalog) return "catalog";
   return requestSource;
 }
 

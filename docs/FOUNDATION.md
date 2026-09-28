@@ -1,6 +1,6 @@
 # Influensia Sourcing Platform — Foundation
 
-Version 1.0 · 28 Sep 2026 · What the foundation phase delivered, how to run it, the module APIs feature engineers must use, and who owns which files.
+Version 1.1 · 28 Sep 2026 · What the foundation phase delivered, how to run it, the module APIs feature engineers must use, and who owns which files. v1.1 adds the integration-pass shared changes (§9). Day-to-day operation (install, logins, env, switching to Postgres/R2/Resend): `docs/RUNBOOK.md`.
 
 Read `docs/ARCHITECTURE.md` (infra, verbatim), `docs/SPEC.md` (product) and `docs/DESIGN.md` (tokens/components) first; this document is the map between them and the code.
 
@@ -16,14 +16,14 @@ npm run dev            # http://localhost:3000  (.env.local already has BETTER_A
 
 Logins (password `Password123!`): `marko@influensia.ro` (admin) · `bogdan@influensia.ro` (agent) · `cristina@influensia.ro` (agent) → `/ops`; `piotr@example.pl` (Piotr's team) · `buyer@koff.example` (KOFF) → `/app`.
 
-Checks (all green on this commit):
+Checks (all green on the integration commit):
 
 ```bash
 npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run test:e2e
 ```
 
-- `test:unit` — Vitest, 55 tests: state machine, leak check, DTO denylist, money, derived (waitingOn/stale/compare), messages vocabulary.
-- `test:e2e` — Playwright seeds its **own** PGlite dir (`.data/e2e/`) and starts `next dev -p 3100`; the developer's `.data/pglite` is untouched. In this container `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers` is set by the config. 6 smoke tests: login errors, client dashboard (AC-DASH-01/03/04), 390 px KOFF dashboard (AC-DASH-02, AC-SHELL-02), ops dashboard KPIs (AC-OPS-01/02/03), client→/ops = 404, agent→/app = redirect, sign-out, Claim.
+- `test:unit` — Vitest, 137 tests in 11 files: foundation (state machine, leak check, DTO denylist, money, derived, messages) + per-feature pure logic.
+- `test:e2e` — Playwright, 42 tests in 7 spec files (anonymity, board, catalog, clients, orders, requests, smoke). It seeds its **own** PGlite dir (`.data/e2e/`), copies it to `.data/e2e-snapshot/`, and starts `next dev -p 3100` (`CI=1` → `next build && next start`); the developer's `.data/pglite` is untouched. **Every spec file starts from the fresh seed**: `test.beforeAll(resetDb)` (`tests/e2e/helpers.ts`) POSTs `/api/test/reset`, which closes PGlite in-process, restores the snapshot (db + files + outbox.log) and drops the cached db/auth singletons — see §9. Tests inside a file are serial and may depend on each other; files are independent. In this container `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers` is set by the config. Full run ≈ 6 min against `next dev`, ≈ 2.5 min with `CI=1` (both green). The config also sets `AUTH_RATE_LIMIT=off` because `next start` enables Better Auth's per-IP sign-in limiter.
 - **PGlite is single-process**: stop `next dev` before `db:seed`/`db:reset`. Set `DATABASE_URL` to use Postgres instead (seed truncates and reseeds).
 
 Other scripts: `db:generate -- --name <what>` (after any schema change; commit `drizzle/`), `db:migrate`, `db:reset`, `auth:schema` (regenerates `src/db/schema/auth.ts` — never hand-edit), `outbox:drain`.
@@ -37,7 +37,7 @@ Other scripts: `db:generate -- --name <what>` (after any schema change; commit `
 | Scaffold | `next.config.ts`, `eslint.config.mjs`, `vitest.config.mts`, `playwright.config.ts`, `drizzle.config.ts`, `src/app/globals.css`, `src/app/layout.tsx`, `src/i18n/request.ts`, `messages/en.json` | Next 16.3.6 / Tailwind 4 / shadcn v4 (radix) / next-intl single locale / Figtree + JetBrains Mono via `next/font`. `globals.css` is DESIGN §2.3 verbatim plus `.sheet`, `.eyebrow`, `.rule-ink`, `.link` utilities. |
 | Schema | `src/db/enums.ts`, `src/db/types.ts`, `src/db/schema/{app,supplier,auth}.ts`, `drizzle/0000_init.sql` | 37 app+supplier tables + 7 Better Auth tables. All SPEC §3.6 enum values live in `enums.ts` as `text(col, { enum })`. |
 | DB | `src/db/index.ts` (`getDb()`, `Db`, `Tx`, `DbOrTx`), `src/db/migrate.ts` | Dual driver, migrate-at-startup, globalThis singleton (spike, verbatim). |
-| Auth | `src/lib/auth/{server,client,cli-config,invite-context}.ts`, `src/app/api/auth/[...all]/route.ts`, `src/proxy.ts`, `src/app/(auth)/**`, `src/app/logout/route.ts` | Invite-only: `user.create.before` hook rejects any sign-up not inside `inviteContext.run(...)`. |
+| Auth | `src/lib/auth/{server,client,cli-config,invite-context}.ts`, `src/app/api/auth/[...all]/route.ts`, `src/proxy.ts`, `src/app/(auth)/**`, `src/app/logout/route.ts` | Invite-only: `user.create.before` hook rejects any sign-up not inside `inviteContext.run(...)`. `emailAndPassword.autoSignIn: false` — inviting a user never touches the caller's session. `inviteContext` (AsyncLocalStorage) lives on `globalThis` like `getAuth()`, so Turbopack HMR can't split them. |
 | Authorization | `src/server/shared/authorize.ts` | `authorize()`, `currentCtx()`, `requireClientPage()`, `requireOpsPage()`, role helpers. |
 | Shared modules | `src/server/shared/*` | state machine, transition, activity, outbox, storage, files, leak check, derived, compare, money, dates, clock, ids, labels, users, line-context, sourcing-counts, http. |
 | Client DTOs | `src/server/client/dto/*.ts` | Every client-facing shape, `.strict()`, denylist-tested. |
@@ -45,7 +45,8 @@ Other scripts: `db:generate -- --name <what>` (after any schema change; commit `
 | Shells & pages | `src/components/app/app-shell.tsx`, `src/components/ops/ops-shell.tsx`, `src/app/(client)/**`, `src/app/(ops)/**` | Both doors, both dashboards, placeholder pages for every nav link, 404/error boundaries. |
 | Shared components | `src/components/shared/*` (index: `@/components/shared`) | See §5. |
 | Seed | `src/db/seed.ts` | SPEC §7 in full, idempotent, asserts §7.16 before exiting. |
-| Tests | `tests/unit/*.test.ts`, `tests/e2e/smoke.spec.ts` | |
+| Tests | `tests/unit/*.test.ts`, `tests/e2e/*.spec.ts`, `tests/e2e/helpers.ts` | `anonymity.spec.ts` is the SPEC 5.4 crawl (§9). |
+| E2E reset | `src/app/api/test/reset/route.ts`, `src/server/shared/test-reset.ts` | 404 unless `E2E_RESET=1` + `E2E_SNAPSHOT_DIR` and no `DATABASE_URL`. |
 
 ---
 
@@ -119,6 +120,18 @@ Detects full/stripped supplier names, distinctive tokens ≥ 6 chars (minus a ge
 - `subLabelFor(state, { agentName, reached, priced, isRepeat })` · `exceptionClientText` · `eventText(type, payload)` (payload.text wins) · `isFeedEvent(type, payload)` · `milestoneLabel` · `stateLabel`.
 - `nextRef` · `setSequence` · `formatRef` · derived ref helpers.
 - `route(handler)` for route handlers (maps Unauthorized/Forbidden/NotFound/Zod/IllegalTransition/LeakCheckError → 401/403/404/400/409/422) · `ActionResult<T>` · `toActionError(e)`.
+
+### `src/server/shared/supplier-performance.ts`
+`recordSupplierPerformance(tx, orderId, at?) → Promise<void>` — SPEC 3.4 roll-up on `→ completed`: per distinct PO supplier, `orders_count + 1`, running `on_time_rate` (delivered ≤ `shipments.eta_port`; unchanged when no port ETA), `last_order_at`. Called inside the completing transaction by **both** paths: agent Close (`changeOrderState(…, "completed")` in `ops/orders.ts`) and client Confirm delivery (`confirmDelivery` in `client/orders.ts`). Touches the supplier schema internally, returns nothing — safe for client code.
+
+### `src/server/shared/range-request.ts`
+`createRangeRequest(tx, ctx, { rangeId, lineId, lineRef, factoryLabel, at? }) → { participationId }` — for a request line the caller has **already inserted** (state `negotiating`, `from_range_id`), creates the range factory's `selected` participation, sets `request_lines.selected_participation_id`, logs `participation_added` (internal). The participation id is a ServerOnly value for that column; nothing supplier-shaped comes back. Used by `requestRangeItems` in `client/ranges.ts` (replaces the old raw-SQL insert).
+
+### Client document URLs
+Every client-facing file link is `/api/files/{client key}?filename=…` (+ `&dl=1` for downloads) built by `clientDownloadUrl(storageKey, filename)` in `src/server/client/documents.ts`, which refuses a non-`/client/` key. `ClientDocumentDto.downloadUrl` and `ClientRangePdfDto.downloadUrl` always carry this shape; there is no `/api/app/documents` route. Catalog/range images use `/api/files/{client key}` directly.
+
+### `src/server/shared/test-reset.ts` (E2E only)
+`testResetEnabled()` · `resetToSnapshot()` — see §1 and `tests/e2e/helpers.ts` (`resetDb`, `login`). Never enabled with `DATABASE_URL`.
 
 ### `src/server/ops/admin.ts`
 `inviteUser(ctx | null, { email, name, role, orgId? | orgName?, country?, password?, at? })` → `{ userId, orgId, email, tempPassword, inviteToken }`: creates org when needed (agents/admins always join the agency), Better Auth user + membership + `app.users` profile, invite token hash (7 d), `user_invited` event, `auth_invite` outbox row. Exposed to admins as `inviteUserAction` in `src/app/(ops)/ops/clients/actions.ts`.
@@ -206,11 +219,32 @@ Replace the placeholder `page.tsx` files in your routes (they render `Placeholde
 
 ## 8. Known gaps (for the feature phase)
 
-- Invite landing (`/invite/[token]`), password reset tokens, rate limiting (AC-AUTH-07/08/09), `/app/settings` (F-01 self-service).
+- Invite landing (`/invite/[token]`), password reset tokens, rate limiting (AC-AUTH-07/08/09). (`/app/settings` F-01 self-service exists since the feature phase: rename + password change.)
 - `resendSender` (React Email templates) — `withLeakGate(localSender, sources)` is wired conceptually; `/api/cron/outbox` uses `localSender`.
 - `X-Test-Clock` header (SPEC F-28) — only `SEED_CLOCK` / `setClock()` exist; the stale worker that persists `stale_since` (derived values are computed live by `loadLineContexts`).
 - `publishDocument()` (copy to `/client/` + leak check) and PDF/xlsx text extraction — `storeDocument`, `withVisibility`, `isPublishableKind`, `leakCheck` are ready.
 - S3/R2 storage adapter is a stub (as in the spike).
-- The anonymity crawl (`tests/e2e/anonymity.spec.ts`, SPEC 5.4) — the canary and every needle are seeded; the smoke test only greps the dashboard.
+- The anonymity crawl covers every `/app` page + client file link for both client users, cross-org 404s and ops non-vacuity; it does not yet crawl the SPEC 2.4 `/api/app/**` JSON routes (none are built — pages use server components/actions) or the `data-dto` JSON islands (none exist).
 - `activity-coverage.test.ts` and `dto-strict.test.ts` (runtime parse over every seeded entity) — the seed already parses the dashboard DTOs for every line; extend per feature.
 - Dark theme tokens are in `globals.css`; no toggle is wired.
+
+---
+
+## 9. Integration pass (v1.1) — shared changes after the feature phase
+
+| Change | Where | Notes |
+|---|---|---|
+| `autoSignIn: false`; invite workaround removed; `AUTH_RATE_LIMIT=off` escape hatch (e2e only) | `src/lib/auth/server.ts`, `src/server/ops/clients.ts` (`inviteAsAdmin`) | The old `keepCallerSession` cookie juggling is gone; clients.spec asserts the admin stays on `/ops` after "+ Client". |
+| HMR-safe invite context | `src/lib/auth/invite-context.ts` | `globalThis.__influensiaInviteContext`. |
+| New activity types | `src/db/enums.ts` `ACTIVITY_TYPES` | `org_updated`, `user_deactivated`, `user_reactivated`, `pricing_rule_saved`, `profile_updated`, `supplier_created`, `supplier_updated`, `supplier_deleted`, `contact_added`, `contact_updated`, `contact_removed`, `product_created`, `product_updated`, `product_published`, `product_unpublished`, `product_image_added`, `product_image_removed`, `image_approved_clean`, `range_created`, `range_item_added`, `range_item_updated`, `range_item_removed`, `range_published`, `range_unpublished`. No more `as unknown as ActivityType` casts or `line_updated` + `payload.action`; every one of these events carries `payload.text` (all internal). `line_updated` stays for genuine line/order edits. |
+| Ops nav | `src/components/ops/ops-shell.tsx`, `src/app/(ops)/layout.tsx` | Settings (`/ops/settings`) added; Outbox shows `pendingOutboxCount()` as a warning-tone badge (`data-testid=nav-count`). Client account menu already had Settings. |
+| Shared helpers | `src/server/shared/{supplier-performance,range-request}.ts` | §4. ESLint boundary unchanged: `shared/**` may import the supplier schema, `client/**` may not. |
+| DTO barrel | `src/server/client/dto/index.ts` | Re-exports every DTO file (requests, lines, orders, documents, catalog, ranges, settings). |
+| Download URLs | `clientDownloadUrl` | §4 "Client document URLs". |
+| `turbopack.root` | `next.config.ts` | Pinned to the project dir; `serverExternalPackages` unchanged. |
+| Confirm-order cross-links | `src/components/ops/board/offer-builder.tsx`, `src/components/ops/requests/request-detail.tsx` | Offer tab → `/ops/orders/new?lineId=<lineRef>`; request page (any accepted line) → `/ops/orders/new?req=<reqRef>`. The page accepts `lineId`/`line`/`req`/`requestRef`. |
+| Queue source badges | `src/server/ops/requests.ts`, `src/components/ops/requests/{queue-table,strings}.ts(x)` | `from_range_id` lines → "Range", `from_catalog` → "Catalog" (repeat still wins). |
+| `/app/orders/[ref]/range` | `src/app/(client)/app/orders/[ref]/range/page.tsx`, `rangeIdForOrder` in `client/ranges.ts` | SPEC 2.2 route the order/line pages link to; redirects to `/app/ranges/[id]`, 404 for other orgs / no published range (AC-RNG-04). Found by the anonymity crawl. |
+| Blocked publish is recorded from the dialog | `previewPublish` in `src/server/ops/documents.ts` | Clicking Publish on a leaky document logs `leak_check_blocked` + `ops_leak_blocked` (AC-DOC-02), same as a blocked `publishDocument`. |
+| E2E isolation + anonymity crawl | `playwright.config.ts`, `tests/e2e/{helpers,anonymity.spec}.ts`, `src/app/api/test/reset` | §1. The crawl allow-lists exactly one client-authored string: KOFF's own pasted alibaba.com reference link on draft REQ-2026-0322-01. |
+

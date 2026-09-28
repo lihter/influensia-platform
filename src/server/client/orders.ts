@@ -3,6 +3,7 @@
  * App schema only. Every returned shape passes a `.strict()` client DTO; the supplier-derived facts (ex-works ETA,
  * factory label) come from the shared helpers as dates / a label.
  */
+import { recordSupplierPerformance } from "@/server/shared/supplier-performance";
 import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { getDb, type DbOrTx } from "@/db";
@@ -164,6 +165,7 @@ export async function confirmDelivery(ctx: Ctx, ref: string, issues?: string | n
       await tx.insert(comments).values({ id, orgId: o.orgId, entityType: "order", entityId: o.id, authorId: ctx.userId, authorName: ctx.name, body: issues.trim(), kind: "update", visibility: "client", source: "app", createdBy: ctx.userId, createdAt: at, updatedAt: at });
     }
     await transitionOrder(o.id, "completed", ctx, { tx, at: new Date(at.getTime() + 1000), notifyClient: false });
+    await recordSupplierPerformance(tx, o.id, at); // SPEC 3.4: supplier_performance rolls up on completion (AC-ORD-05)
     for (const u of await clientUsersOf(tx, o.orgId)) {
       await enqueue({ userId: u.id, toEmail: u.email, template: "client_milestone_changed", entityRef: o.ref, subject: `${o.ref}: Delivered — thank you`, payload: { ref: o.ref, name: o.ref, milestone: "delivered", completed: true, url: `/app/orders/${o.ref}` }, idempotencyKey: `client_milestone_changed:${o.id}:completed:${u.id}`, at }, tx);
     }

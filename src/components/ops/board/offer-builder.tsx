@@ -168,7 +168,7 @@ export function OfferBuilder({ line, preselect, isAdmin }: { line: OpsLine; pres
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold">{S.offer.sent}</h2>
-          {accepted && line.state === "offer_accepted" && <Button asChild variant="green" size="sm" data-testid="confirm-order"><Link href={`/ops/orders?confirm=${line.ref}`}>{S.offer.confirmOrder}</Link></Button>}
+          {accepted && line.state === "offer_accepted" && <Button asChild variant="green" size="sm" data-testid="confirm-order"><Link href={`/ops/orders/new?lineId=${encodeURIComponent(line.ref)}`}>{S.offer.confirmOrder}</Link></Button>}
         </div>
         {sent.length === 0 ? <p className="text-sm text-muted-foreground">—</p> : (
           <ul className="sheet" data-testid="sent-offers">

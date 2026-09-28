@@ -11,7 +11,7 @@ export const ClientDocumentDto = z.object({
   kind: z.enum(CLIENT_KINDS),
   bytes: z.number().int().nonnegative(),
   uploadedAt: isoDateTime,
-  /** always /api/app/documents/{id}/download */
+  /** always the foundation route: /api/files/{key}?filename=… (see clientDownloadUrl in server/client/documents.ts) */
   downloadUrl: z.string(),
 }).strict();
 export type ClientDocumentDto = z.infer<typeof ClientDocumentDto>;

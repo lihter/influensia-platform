@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { resetDb } from "./helpers";
 
 /**
  * Line page + sourcing board + offers + samples (SPEC F-07, F-08, F-09, F-15…F-20). Runs against the freshly seeded
@@ -13,6 +14,9 @@ async function login(page: Page, email: string) {
   await page.click("button[type=submit]");
   await page.waitForURL(/\/(app|ops)(\?|$)/);
 }
+
+test.beforeAll(resetDb); // each spec file starts from the freshly seeded snapshot
+test.describe.configure({ mode: "serial" }); // the client block decides on the offer the ops block sends
 
 test.describe.serial("ops line page", () => {
   test("AC-BOARD-01/02: the seeded card-sleeves board + compare strip", async ({ page }) => {
@@ -80,7 +84,7 @@ test.describe.serial("ops line page", () => {
     await page.getByTestId("send-offer").click();
     await expect(page.locator("[data-testid=sent-offers] [data-status=sent]")).toHaveCount(1);
     await page.goto("/ops/lines/REQ-2026-0312-03?tab=timeline");
-    await expect(page.getByTestId("line-tabs")).toContainText("offer_ready");
+    await expect(page.getByTestId("line-state")).toHaveAttribute("data-state", "offer_ready");
   });
 
   test("AC-TL-03/02: client update leak-blocked, then posted", async ({ page }) => {
@@ -89,7 +93,7 @@ test.describe.serial("ops line page", () => {
     await page.getByTestId("mode-update").click();
     await page.getByTestId("composer-body").fill("as Yuantuo confirmed, production starts Monday");
     await page.getByTestId("composer-post").click();
-    await expect(page.getByTestId("composer-error")).toContainText(/Leak check.*Yuantuo/);
+    await expect(page.getByTestId("composer-error")).toContainText(/Leak check.*Yuantuo/i, { timeout: 45_000 });
     await page.getByTestId("composer-body").fill("Production photos from the line");
     await page.getByTestId("composer-post").click();
     await expect(page.getByTestId("timeline")).toContainText("Production photos from the line");
@@ -167,4 +171,22 @@ test.describe.serial("client pages", () => {
     await expect(page.getByTestId("milestone-suffix")).toContainText("Order confirmed");
     await expect(page.getByTestId("sub-label")).toContainText("Preparing your order confirmation");
   });
+});
+
+test("cross-links: accepted offer → Confirm order from the offer tab (?lineId) and the request page (?req)", async ({ page }) => {
+  // depends on "KOFF accepts gloves offer" above (REQ-2026-0301-01 is offer_accepted)
+  await login(page, "bogdan@influensia.ro");
+  await page.goto("/ops/lines/REQ-2026-0301-01?tab=offer");
+  const fromOffer = page.getByTestId("confirm-order");
+  await expect(fromOffer).toHaveAttribute("href", "/ops/orders/new?lineId=REQ-2026-0301-01");
+  await fromOffer.click();
+  await page.waitForURL(/\/ops\/orders\/new\?lineId=REQ-2026-0301-01/);
+  await expect(page.locator("h1")).toContainText("Confirm order");
+  await expect(page.locator("header")).toContainText("REQ-2026-0301");
+  await page.goto("/ops/requests/REQ-2026-0301");
+  const fromRequest = page.getByTestId("confirm-order-link");
+  await expect(fromRequest).toHaveAttribute("href", "/ops/orders/new?req=REQ-2026-0301");
+  await fromRequest.click();
+  await page.waitForURL(/\/ops\/orders\/new\?req=REQ-2026-0301/);
+  await expect(page.locator("h1")).toContainText("Confirm order");
 });

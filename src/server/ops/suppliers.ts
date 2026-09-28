@@ -274,7 +274,7 @@ export async function createSupplier(ctx: Ctx, input: SupplierInput & { contact?
     if (input.contact && (clean(input.contact.name) || clean(input.contact.handle))) {
       await tx.insert(supplierContacts).values({ id: uuidv7(), supplierId: id, name: clean(input.contact.name), channel: input.contact.channel, handle: clean(input.contact.handle), phone: clean(input.contact.phone), isPrimary: true, createdAt: at });
     }
-    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "supplier_created", ref, legalName: input.legalName.trim(), createAnyway: !!input.createAnyway, duplicateOf: dup?.ref ?? null } });
+    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: id, type: "supplier_created", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Supplier ${ref} created`, ref, legalName: input.legalName.trim(), createAnyway: !!input.createAnyway, duplicateOf: dup?.ref ?? null } });
   });
   invalidateLeakSources();
   return { id, ref };
@@ -295,7 +295,7 @@ export async function updateSupplier(ctx: Ctx, id: string, input: SupplierInput)
       verdictCheckedAt: verdictChanged ? at : s.verdictCheckedAt, grade: input.grade ?? null, uscc: clean(input.uscc), registeredAt: clean(input.registeredAt), capital: clean(input.capital), city: clean(input.city), province: clean(input.province),
       country: clean(input.country) ?? s.country, ports: input.ports ?? s.ports, website: clean(input.website), notes: clean(input.notes), updatedAt: at,
     }).where(eq(suppliers.id, id));
-    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "supplier_updated", ref: s.ref, changed: Object.keys(input) } });
+    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: id, type: "supplier_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Supplier ${s.ref} updated`, ref: s.ref, changed: Object.keys(input) } });
   });
   invalidateLeakSources();
   return { ref: s.ref };
@@ -312,7 +312,7 @@ export async function addContact(ctx: Ctx, supplierId: string, input: ContactInp
     if (input.isPrimary) await tx.update(supplierContacts).set({ isPrimary: false }).where(eq(supplierContacts.supplierId, supplierId));
     const existing = await tx.select({ id: supplierContacts.id }).from(supplierContacts).where(and(eq(supplierContacts.supplierId, supplierId), isNull(supplierContacts.deletedAt)));
     await tx.insert(supplierContacts).values({ id, supplierId, name: clean(input.name), channel: input.channel, handle: clean(input.handle), phone: clean(input.phone), isPrimary: input.isPrimary || existing.length === 0, createdAt: at });
-    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: supplierId, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "contact_added", ref: s.ref, channel: input.channel, name: clean(input.name), handle: clean(input.handle) } });
+    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: supplierId, type: "contact_added", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Contact added (${input.channel})`, ref: s.ref, channel: input.channel, name: clean(input.name), handle: clean(input.handle) } });
   });
   invalidateLeakSources();
   return { id };
@@ -327,7 +327,7 @@ export async function updateContact(ctx: Ctx, contactId: string, input: ContactI
   await db.transaction(async (tx) => {
     if (input.isPrimary) await tx.update(supplierContacts).set({ isPrimary: false }).where(eq(supplierContacts.supplierId, c.supplierId));
     await tx.update(supplierContacts).set({ name: clean(input.name), channel: input.channel, handle: clean(input.handle), phone: clean(input.phone), isPrimary: !!input.isPrimary || c.isPrimary && input.isPrimary !== false }).where(eq(supplierContacts.id, contactId));
-    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: c.supplierId, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "contact_updated", contactId, channel: input.channel } });
+    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: c.supplierId, type: "contact_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: `Contact updated (${input.channel})`, contactId, channel: input.channel } });
   });
   invalidateLeakSources();
 }
@@ -340,7 +340,7 @@ export async function removeContact(ctx: Ctx, contactId: string): Promise<void> 
   const at = now();
   await db.transaction(async (tx) => {
     await tx.update(supplierContacts).set({ deletedAt: at, isPrimary: false }).where(eq(supplierContacts.id, contactId));
-    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: c.supplierId, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "contact_removed", contactId } });
+    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: c.supplierId, type: "contact_removed", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: "Contact removed", contactId } });
   });
   invalidateLeakSources();
 }
@@ -372,7 +372,7 @@ export async function deleteSupplier(ctx: Ctx, id: string): Promise<void> {
   const at = now();
   await db.transaction(async (tx) => {
     await tx.update(suppliers).set({ deletedAt: at, updatedAt: at }).where(eq(suppliers.id, id));
-    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: id, type: "line_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { action: "supplier_deleted" } });
+    await logActivity(tx, { orgId: ctx.orgId, entityType: "supplier", entityId: id, type: "supplier_deleted", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { text: "Supplier deleted" } });
   });
   invalidateLeakSources();
 }

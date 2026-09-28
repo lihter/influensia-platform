@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
+import { resetDb } from "./helpers";
 
 /**
  * Orders + documents (F-10, F-22, F-23) against a fresh seed:
@@ -18,6 +19,8 @@ async function login(page: Page, email: string) {
   await page.click("button[type=submit]");
   await page.waitForURL(/\/(app|ops)(\?|$)/);
 }
+
+test.beforeAll(resetDb); // each spec file starts from the freshly seeded snapshot
 
 test.describe.configure({ mode: "serial" });
 
@@ -163,4 +166,12 @@ test("client order page: published doc downloadable, internal key 404, confirm d
   await page.getByRole("button", { name: "Create request" }).click();
   await page.waitForURL(/\/app\/requests\/REQ-2026-\d{4}/, { timeout: 30_000 });
 
+});
+
+test("AC-ORD-05: client confirm-delivery rolls up supplier performance (shared recordSupplierPerformance)", async ({ page }) => {
+  await login(page, "bogdan@influensia.ro");
+  await page.goto("/ops/suppliers/SUP-0007");
+  await page.click("button[role=tab]:has-text('Performance')");
+  const orders = page.getByTestId("performance").getByTestId("kpi-tile").filter({ hasText: "Orders" });
+  await expect(orders.getByTestId("kpi-value")).toHaveText("1"); // seed 0 → ORD-2026-0312 completed by Piotr above
 });

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { resetDb } from "./helpers";
 
 /**
  * Foundation smoke (runs against a freshly seeded PGlite dir, see playwright.config.ts):
@@ -16,6 +17,8 @@ async function login(page: Page, email: string) {
   await page.click("button[type=submit]");
   await page.waitForURL(/\/(app|ops)(\?|$)/);
 }
+
+test.beforeAll(resetDb); // each spec file starts from the freshly seeded snapshot
 
 test("unauthenticated /app redirects to /login?next=", async ({ page }) => {
   const res = await page.goto("/app/orders/ORD-2026-0312");

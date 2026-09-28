@@ -1,7 +1,7 @@
 /** Ops strings for queue / requests (local during the feature phase; would live under `ops.queue.*` / `ops.requests.*`). */
 export const O = {
   col: { ref: "Ref", client: "Client", name: "Product / line", qty: "Qty", links: "Links", images: "Photos", source: "Source", state: "State", submitted: "Submitted", agent: "Agent", lines: "Lines", states: "States", updated: "Updated", stale: "Stale", status: "Status", last: "Last" },
-  source: { portal: "Portal", import: "Import", agent_on_behalf: "WhatsApp", catalog: "Catalog", repeat: "Repeat" } as const,
+  source: { portal: "Portal", import: "Import", agent_on_behalf: "WhatsApp", catalog: "Catalog", range: "Range", repeat: "Repeat" } as const,
   scope: { queue: "Queue", unassigned: "Unassigned", waiting: "Waiting on us" },
   claim: "Claim",
   assign: "Assign",
@@ -37,7 +37,7 @@ export const O = {
     noActivity: "Nothing yet.",
     facts: { source: "Source", status: "Status", submitted: "Submitted", created: "Created", target: "Target delivery", destination: "Destination", incoterm: "Incoterm", mode: "Commercial mode", display: "Pricing display", by: "Created by" },
     confirmOrder: "Confirm order",
-    confirmOrderHint: (n: number) => `${n} accepted line${n === 1 ? "" : "s"} ready — order confirmation lives on the order page (F-22).`,
+    confirmOrderHint: (n: number) => `${n} accepted line${n === 1 ? "" : "s"} ready — confirm the order (F-22).`,
     preview: "Preview as client",
     open: "Open line",
     clientNote: "Client note",

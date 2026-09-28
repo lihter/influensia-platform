@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
+import { resetDb } from "./helpers";
 
 /**
  * Intake + lists + queue (SPEC F-04, F-05, F-06, F-14). Runs against the freshly seeded dir of playwright.config.ts
@@ -26,6 +27,8 @@ async function paste(page: Page, text: string) {
     el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
   }, text);
 }
+
+test.beforeAll(resetDb); // each spec file starts from the freshly seeded snapshot
 
 test.describe.configure({ mode: "serial" });
 

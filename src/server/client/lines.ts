@@ -13,6 +13,7 @@ import { factoryLabelForLine } from "@/server/shared/sourcing-counts";
 import { milestoneStep, isActionMilestone, isBeforeOrder, MILESTONES } from "@/server/shared/state-machine";
 import { subLabelFor, exceptionClientText, eventText, isFeedEvent, MILESTONE_EVENT_TYPES } from "@/server/shared/labels";
 import { clientWaitingReason, etaLabelFor } from "./dashboard";
+import { clientDownloadUrl } from "./documents";
 import { ClientRequestLineDto, ClientDocumentDto, ClientUpdateDto, ClientEventDto, ClientTimelineDto, ClientPreviousOrderDto, type ClientDocumentDto as ClientDocument } from "./dto";
 import { ClientLinePageDto, ClientLineOfferCardDto, ClientLineSampleCardDto, ClientLineOrderCardDto } from "./dto/lines";
 
@@ -36,7 +37,7 @@ export async function clientDocuments(db: DbOrTx, orgId: string, entities: { ent
     .orderBy(desc(documents.createdAt));
   return rows
     .filter(({ d, f }) => CLIENT_KINDS.has(d.kind) && f.storageKey.includes("/client/") && (!f.mime.startsWith("image/") || f.exifStripped))
-    .map(({ d, f }) => ClientDocumentDto.parse({ id: d.id, filename: d.filename, kind: d.kind, bytes: f.bytes, uploadedAt: d.createdAt.toISOString(), downloadUrl: `/api/files/${f.storageKey}?filename=${encodeURIComponent(d.filename)}` }));
+    .map(({ d, f }) => ClientDocumentDto.parse({ id: d.id, filename: d.filename, kind: d.kind, bytes: f.bytes, uploadedAt: d.createdAt.toISOString(), downloadUrl: clientDownloadUrl(f.storageKey, d.filename) }));
 }
 
 /** Loads a line by ref inside the caller's org, or 404. */

@@ -4,7 +4,6 @@
  * in the same transaction. Invites go through the foundation's `inviteUser()`.
  */
 import { randomBytes, createHash } from "node:crypto";
-import { cookies, headers } from "next/headers";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, type DbOrTx } from "@/db";
@@ -74,9 +73,7 @@ export function userStatus(u: { deactivatedAt: Date | null; passwordSetAt: Date 
 export const isOpenState = (state: LineState, exception: LineException | null) => state !== "completed" && state !== "delivered" && exception !== "cancelled";
 
 /**
- * Activity types this feature needs that are not (yet) in `ACTIVITY_TYPES` (SPEC 3.6 only lists `user_invited` for
- * organisations). There is no DB check constraint on `activity_events.type`, the events are internal-only and rendered
- * through `payload.text`, so they are written as-is. Foundation ask: add these values to `src/db/enums.ts`.
+ * Admin activity types (in `ACTIVITY_TYPES` since the integration pass). Internal-only, rendered through `payload.text`.
  */
 export const ADMIN_EVENTS = {
   orgUpdated: "org_updated",
@@ -84,7 +81,7 @@ export const ADMIN_EVENTS = {
   userReactivated: "user_reactivated",
   inviteResent: "user_invited",
 } as const;
-const adminEvent = (t: (typeof ADMIN_EVENTS)[keyof typeof ADMIN_EVENTS]) => t as unknown as ActivityType;
+const adminEvent = (t: (typeof ADMIN_EVENTS)[keyof typeof ADMIN_EVENTS]): ActivityType => t;
 
 /* ────────── read models ────────── */
 
@@ -246,34 +243,6 @@ export async function getClient(ctx: Ctx, orgId: string): Promise<ClientDetail> 
 
 /* ────────── mutations (admin only) ────────── */
 
-const SESSION_COOKIES = ["__Secure-better-auth.session_token", "better-auth.session_token"];
-
-/**
- * WORKAROUND (foundation ask): `inviteUser()` → `auth.api.signUpEmail` auto-signs-in the NEW user, and the `nextCookies`
- * plugin writes that session cookie onto the admin's response inside a server action — the admin would land on the client's
- * door (404 on /ops) after every invite. Until `emailAndPassword.autoSignIn: false` lands in src/lib/auth/server.ts we keep
- * the caller's cookie: read it before, re-set it after (last `cookies().set` wins), and drop the invitee's stray session rows.
- */
-async function keepCallerSession<T extends { userId: string }>(db: DbOrTx, fn: () => Promise<T>): Promise<T> {
-  let saved: { name: string; value: string } | null = null;
-  try {
-    const raw = (await headers()).get("cookie") ?? "";
-    for (const part of raw.split(";")) {
-      const [k, ...v] = part.trim().split("=");
-      if (SESSION_COOKIES.includes(k)) { saved = { name: k, value: decodeURIComponent(v.join("=")) }; break; }
-    }
-  } catch { /* outside a request scope (seed/tests) */ }
-  const r = await fn();
-  if (saved) {
-    try {
-      const c = await cookies();
-      c.set(saved.name, saved.value, { httpOnly: true, sameSite: "lax", path: "/", secure: saved.name.startsWith("__Secure-"), maxAge: 60 * 60 * 24 * 30 });
-    } catch { /* not in a mutable cookie scope */ }
-    await db.delete(authSession).where(eq(authSession.userId, r.userId));
-  }
-  return r;
-}
-
 export async function updateClientSettings(ctx: Ctx, orgId: string, raw: ClientSettingsInput): Promise<{ changed: string[] }> {
   if (!isAdmin(ctx)) throw new Forbidden("admin only");
   const input = ClientSettingsInput.parse(raw);
@@ -294,11 +263,13 @@ export async function updateClientSettings(ctx: Ctx, orgId: string, raw: ClientS
   return { changed };
 }
 
-/** The foundation's `inviteUser` with the session workaround above (used by `inviteUserAction`). */
-export async function inviteUserKeepingSession(ctx: Ctx, raw: Parameters<typeof inviteUser>[1]) {
+/**
+ * Admin-only wrapper around the foundation's `inviteUser` (used by `inviteUserAction`). Better Auth runs with
+ * `autoSignIn: false`, so creating the invitee never touches the admin's session cookie.
+ */
+export async function inviteAsAdmin(ctx: Ctx, raw: Parameters<typeof inviteUser>[1]) {
   if (!isAdmin(ctx)) throw new Forbidden("admin only");
-  const db = await getDb();
-  return keepCallerSession(db, () => inviteUser(ctx, raw));
+  return inviteUser(ctx, raw);
 }
 
 export async function createClient(ctx: Ctx, raw: CreateClientInput) {
@@ -310,7 +281,7 @@ export async function createClient(ctx: Ctx, raw: CreateClientInput) {
   const [dupUser] = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
   if (dupUser) throw new z.ZodError([{ code: "custom", path: ["email"], message: "A user with this email already exists.", input: input.email }]);
   const at = now();
-  const r = await keepCallerSession(db, () => inviteUser(ctx, { email: input.email, name: input.userName, role: "client_owner", orgName: input.orgName, country: input.country, at }));
+  const r = await inviteUser(ctx, { email: input.email, name: input.userName, role: "client_owner", orgName: input.orgName, country: input.country, at });
   await db.transaction(async (tx) => {
     await tx.update(organizations).set({ vatId: input.vatId, commercialMode: input.commercialMode, pricingDisplay: input.pricingDisplay, defaultIncoterm: input.defaultIncoterm, language: input.language, updatedAt: at }).where(eq(organizations.id, r.orgId));
     await logActivity(tx, { orgId: r.orgId, entityType: "organization", entityId: r.orgId, type: adminEvent(ADMIN_EVENTS.orgUpdated), actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { created: true, text: `Client created — ${input.orgName} (${input.country}), ${input.commercialMode} · ${input.pricingDisplay} · ${input.defaultIncoterm}` } });
@@ -325,7 +296,7 @@ export async function addClientUser(ctx: Ctx, raw: AddClientUserInput) {
   await clientOrg(db, input.orgId);
   const [dupUser] = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
   if (dupUser) throw new z.ZodError([{ code: "custom", path: ["email"], message: "A user with this email already exists.", input: input.email }]);
-  const r = await keepCallerSession(db, () => inviteUser(ctx, { email: input.email, name: input.name, role: "client_owner", orgId: input.orgId }));
+  const r = await inviteUser(ctx, { email: input.email, name: input.name, role: "client_owner", orgId: input.orgId });
   return { userId: r.userId, email: r.email, tempPassword: r.tempPassword, inviteToken: r.inviteToken };
 }
 

@@ -9,11 +9,10 @@ import { requestLines } from "@/db/schema/app";
 import { suppliers, supplierParticipations, quotes, quotePriceBreaks } from "@/db/schema/supplier";
 import { type Ctx, isOps, Forbidden, NotFound } from "@/server/shared/authorize";
 import { logActivity } from "@/server/shared/activity";
-import { transition } from "@/server/shared/transition";
 import { normaliseQuote } from "@/server/shared/compare";
 import { now } from "@/server/shared/clock";
 import { storeDocument } from "@/server/shared/files";
-import { loadFx } from "./participations";
+import { loadFx, ensureQuotesIn, PRE_QUOTES_STATES } from "./participations";
 
 export type LogQuoteInput = {
   participationId: string;
@@ -77,7 +76,8 @@ export async function logQuote(ctx: Ctx, input: LogQuoteInput): Promise<{ quoteI
       payload: { ref: line.lineRef, supplierRef: sup?.ref, supplierName: sup?.legalName, participationId: p.id, quoteId, version, currency: input.currency, price: breaks[breaks.length - 1]?.unitPriceMinorE2 !== undefined ? breaks[breaks.length - 1].unitPriceMinorE2 / 10000 : null, usdMinorE2: n.usdMinorE2 },
     });
     if (status !== p.status) await logActivity(tx, { orgId: line.orgId, entityType: "request_line", entityId: line.id, type: "participation_status_changed", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { ref: line.lineRef, supplierRef: sup?.ref, supplierName: sup?.legalName, participationId: p.id, from: p.status, status, reason: "quote logged" } });
-    if (line.state === "rfq_out") await transition(line.id, "quotes_in", null, { tx, at });
+    // QA-07: a quote on a line still in spec_frozen / cost_target_price / rfq_out moves it on to quotes_in (RFQ auto-recorded)
+    if (PRE_QUOTES_STATES.includes(line.state as never)) await ensureQuotesIn(tx, line, ctx, at);
     return { quoteId, version, lineRef: line.lineRef, usdMinorE2: n.usdMinorE2 };
   });
 }

@@ -5,7 +5,7 @@
 import { ZodError } from "zod";
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
-import { getDb, type DbOrTx } from "@/db";
+import { getDb, type DbOrTx, type Tx } from "@/db";
 import {
   requestLines, requests, organizations, products, productSpecs, productImages, offers, offerOptions, samples, orders, orderLines,
   documents, files, comments, activityEvents, pricingRules, fxRates, rfqs, payments, factoryRanges,
@@ -26,6 +26,8 @@ import { nextRef } from "@/server/shared/ids";
 import { now } from "@/server/shared/clock";
 import { daysBetween } from "@/server/shared/dates";
 import { storeDocument } from "@/server/shared/files";
+import { normaliseLoadingPort, LOADING_PORTS } from "@/server/shared/leak-check";
+import { collapseOpsFeed } from "@/server/shared/timeline";
 
 /* ───────────────────────── types ───────────────────────── */
 
@@ -47,6 +49,8 @@ export type OpsParticipation = {
   /** compare() output for the latest quote */
   usdMinorE2: number | null; flags: QuoteFlag[]; clean: boolean; isBestClean: boolean;
   isSelected: boolean; isBackup: boolean;
+  /** QA-06: the quote's port if it is a real loading port, else the supplier's first loading port — never an inland city */
+  loadingPort: string | null;
 };
 export type OpsCompareStrip = {
   bestClean: { usdMinorE2: number; label: string } | null;
@@ -95,7 +99,23 @@ export type OpsLine = {
   rfqs: { id: string; version: number; sentAt: string | null; recipientsCount: number }[];
   offers: OpsOffer[]; samples: OpsSample[]; order: { id: string; ref: string; state: LineState } | null;
   feed: OpsFeedItem[]; previousOrders: OpsPreviousOrder[]; openQuestion: { id: string; body: string; at: string } | null;
+  /** QA-06: offer builder defaults — port is a real loading port (never the factory's inland city) or null */
+  offerDefaults: { port: string | null; ports: readonly string[] };
+  /** QA-07/QA-16d: why "Send offer" is disabled right now (null = sendable) */
+  sendOfferBlockedReason: string | null;
 };
+
+/** QA-07: human reason the offer cannot be sent yet (the builder shows it next to the disabled button). */
+export function sendOfferBlockedReason(p: { state: string; exception: string | null; hasQuotes: boolean; hasSentOffer: boolean; hasOrder: boolean }): string | null {
+  if (p.hasOrder) return "This line is already on an order.";
+  if (p.exception === "cancelled") return "The line is cancelled.";
+  if (p.exception === "on_hold") return "The line is on hold — take it off hold first.";
+  if (p.hasSentOffer) return "An offer is already with the client — wait for their answer (or their change request) before sending a new version.";
+  if (["draft", "submitted", "in_review"].includes(p.state)) return "Freeze the spec first (Spec tab).";
+  if (["sampling", "offer_accepted"].includes(p.state)) return "The client already accepted an offer.";
+  if (!p.hasQuotes) return "Log at least one supplier quote on the Sourcing tab first.";
+  return null;
+}
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -194,6 +214,7 @@ export async function loadParticipations(db: DbOrTx, lineId: string, line: { qty
       quotes: qs, latestQuote: qs[0] ?? null,
       usdMinorE2: c?.usdMinorE2 ?? null, flags: c?.flags ?? [], clean: c?.clean ?? false, isBestClean: !!cmp.bestClean && cmp.bestClean.participationId === p.id,
       isSelected: line.selectedParticipationId === p.id, isBackup: line.backupParticipationId === p.id,
+      loadingPort: normaliseLoadingPort(qs[0]?.port) ?? (s.ports ?? []).map((x) => normaliseLoadingPort(x)).find((x) => !!x) ?? null,
     };
   });
   const order: Record<ParticipationStatus, number> = { selected: 0, backup: 1, negotiating: 2, shortlisted: 3, quoted: 4, contacted: 5, dropped: 6, cannot_make: 7 };
@@ -325,7 +346,12 @@ export async function getOpsLine(ctx: Ctx, ref: string): Promise<OpsLine> {
       photos: sampleDocs.filter((d) => d.kind === "sample_photo"), paymentStatus: samplePays.find((p) => p.createdAt.getTime() >= (s.orderedAt?.getTime() ?? 0) - 1)?.status ?? null,
     })),
     order: lc?.order ? { id: lc.order.id, ref: lc.order.ref, state: lc.order.state } : null,
-    feed, previousOrders, openQuestion: openQ && line.exception === "needs_input" ? { id: openQ.id, body: openQ.body, at: openQ.createdAt.toISOString() } : null,
+    feed: collapseOpsFeed(feed), previousOrders, openQuestion: openQ && line.exception === "needs_input" ? { id: openQ.id, body: openQ.body, at: openQ.createdAt.toISOString() } : null,
+    offerDefaults: {
+      port: (parts.find((p) => p.isSelected && p.loadingPort) ?? parts.find((p) => p.latestQuote && p.loadingPort && !["dropped", "cannot_make"].includes(p.status)) ?? parts.find((p) => p.loadingPort))?.loadingPort ?? null,
+      ports: LOADING_PORTS,
+    },
+    sendOfferBlockedReason: sendOfferBlockedReason({ state: lc?.state ?? line.state, exception: lc?.exception ?? line.exception, hasQuotes: parts.some((p) => p.latestQuote), hasSentOffer: offerRows.some((o) => o.status === "sent"), hasOrder: !!lc?.order }),
   };
 }
 
@@ -336,30 +362,30 @@ export function opsEventText(type: ActivityType, p: Record<string, unknown>): st
   const s = (k: string) => (typeof p[k] === "string" || typeof p[k] === "number" ? String(p[k]) : "");
   if (typeof p.text === "string" && p.text) return p.text;
   switch (type) {
-    case "state_changed": return `${s("from").replace(/_/g, " ")} → ${s("to").replace(/_/g, " ")}${p.note ? ` — ${s("note")}` : ""}`;
-    case "state_overridden": return `State overridden: ${s("from")} → ${s("to")} (${s("reason")})`;
+    case "state_changed": return `${label("state", s("from"))} → ${label("state", s("to"))}${p.note ? ` — ${s("note")}` : ""}`;
+    case "state_overridden": return `State overridden: ${label("state", s("from"))} → ${label("state", s("to"))} (${s("reason")})`;
     case "line_assigned": return `Assigned to ${s("agentName")}`;
     case "participation_added": return `Supplier added: ${s("supplierName")}`;
-    case "participation_status_changed": return `${s("supplierName")} → ${s("status").replace(/_/g, " ")}${p.reason ? ` (${s("reason")})` : ""}`;
+    case "participation_status_changed": return `${s("supplierName")} → ${label("participation", s("status"))}${p.reason ? ` (${s("reason")})` : ""}`;
     case "quote_logged": return `Quote logged: ${s("supplierName")} ${s("currency")} ${s("price")}`;
     case "cost_model_saved": return `Cost model saved — est. ${s("est")} · target ${s("target")}`;
     case "target_confirmed": return `Target price confirmed — ${s("target")}`;
     case "rfq_sent": return `RFQ sent to ${s("recipients")} suppliers`;
     case "spec_frozen": return `Spec frozen v${s("version")}`;
     case "offer_sent": return `Offer v${s("version")} sent`;
-    case "offer_decided": return `Offer ${s("decision")}${p.option ? ` (Option ${s("option")})` : ""}`;
+    case "offer_decided": return `Offer ${s("decision").replace(/_/g, " ")}${p.option ? ` (Option ${s("option")})` : ""}`;
     case "sample_created": return `Sample created ${s("sampleRef")}`;
-    case "sample_status_changed": return `Sample ${s("status")}`;
+    case "sample_status_changed": return `Sample ${label("sampleStatus", s("status")).toLowerCase()}`;
     case "sample_decided": return `Sample ${s("decision")}`;
-    case "exception_set": return `Flag set: ${s("exception").replace(/_/g, " ")}${p.reason ? ` — ${s("reason")}` : ""}`;
+    case "exception_set": return `Flag set: ${label("exception", s("exception"))}${p.reason ? ` — ${s("reason")}` : ""}`;
     case "exception_cleared": return "Flag cleared";
     case "comment_posted": return "Comment posted";
     case "whatsapp_logged": return `WhatsApp logged${p.counterparty ? ` ↔ ${s("counterparty")}` : ""}`;
     case "document_uploaded": return `Document added: ${s("filename")}`;
-    case "document_published": return `Document published: ${s("kind")}`;
+    case "document_published": return `Document published: ${label("documentKind", s("kind"))}`;
     case "leak_check_blocked": return `Leak check blocked ${s("where")}`;
     case "po_updated": return `PO updated${p.poRef ? ` ${s("poRef")}` : ""}${p.note ? ` — ${s("note")}` : ""}`;
-    default: return type.replace(/_/g, " ");
+    default: return label("activityType", type);
   }
 }
 
@@ -402,7 +428,7 @@ export async function addParticipation(ctx: Ctx, input: AddParticipationInput): 
         supplierId = uuidv7();
         await tx.insert(suppliers).values({ id: supplierId, ref: supplierRef, legalName: c.legalName, normalisedName: norm, cnName: c.cnName ?? null, city: c.city ?? null, typeVerdict: "unchecked", createdBy: ctx.userId, createdAt: at, updatedAt: at });
       }
-      if (c.channel) {
+      if (c.contactName?.trim() || c.handle?.trim() || c.phone?.trim()) { // QA-42: no empty "(no name)" contact
         contactId = uuidv7();
         await tx.insert(supplierContacts).values({ id: contactId, supplierId, name: c.contactName ?? null, channel: c.channel, handle: c.handle ?? null, phone: c.phone ?? null, isPrimary: !dup, createdAt: at });
       }
@@ -425,6 +451,7 @@ export { REASON_REQUIRED } from "@/components/ops/board/pure";
 /** Enum arrays re-exported for action files (which may not import @/db directly). */
 export { PARTICIPATION_STATUSES, CONTACT_CHANNELS, INCOTERMS, SAMPLE_PAID_BY, LINE_STATES, PRODUCT_CATEGORIES, UNITS } from "@/db/enums";
 import { REASON_REQUIRED } from "@/components/ops/board/pure";
+import { label } from "@/lib/labels";
 
 /** Status change with the SPEC F-17 side effects (selected/backup pointers, line state follow-ups). */
 export async function setParticipationStatus(ctx: Ctx, input: { participationId: string; status: ParticipationStatus; reason?: string | null; dontBump?: boolean }) {
@@ -458,9 +485,11 @@ export async function setParticipationStatus(ctx: Ctx, input: { participationId:
     }
     await tx.update(requestLines).set(patch).where(eq(requestLines.id, line.id));
     await logActivity(tx, { orgId: line.orgId, entityType: "request_line", entityId: line.id, type: "participation_status_changed", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { ref: line.lineRef, supplierRef: sup?.ref, supplierName: sup?.legalName, participationId: p.id, from: p.status, status: input.status, reason: input.reason ?? null } });
-    // line state follow-ups (SPEC 3.4)
-    if (input.status === "shortlisted" && line.state === "quotes_in") await transition(line.id, "shortlisted", ctx, { tx, at });
-    if (input.status === "negotiating" && (line.state === "quotes_in" || line.state === "shortlisted")) await transition(line.id, "negotiating", ctx, { tx, at });
+    // line state follow-ups (SPEC 3.4); a line whose quotes were logged before "Mark RFQ sent" is caught up first (QA-07)
+    let state = line.state as State;
+    if ((input.status === "shortlisted" || input.status === "negotiating" || input.status === "selected") && PRE_QUOTES_STATES.includes(state)) state = await ensureQuotesIn(tx, line, ctx, at);
+    if (input.status === "shortlisted" && state === "quotes_in") await transition(line.id, "shortlisted", ctx, { tx, at: new Date(at.getTime() + 5) });
+    if (input.status === "negotiating" && (state === "quotes_in" || state === "shortlisted")) await transition(line.id, "negotiating", ctx, { tx, at: new Date(at.getTime() + 5) });
     return { lineRef: line.lineRef };
   });
 }
@@ -503,15 +532,56 @@ export async function markRfqSent(ctx: Ctx, input: { lineId: string; recipientsC
     await tx.insert(rfqs).values({ id: uuidv7(), requestId: line.requestId, requestLineId: line.id, orgId: line.orgId, version: Number(prev?.v ?? 0) + 1, fileId, sentAt: at, recipientsCount: recipients, createdBy: ctx.userId, createdAt: at, updatedAt: at });
     for (const p of parts) if (!p.firstContactAt || !p.lastContactAt) await tx.update(supplierParticipations).set({ firstContactAt: p.firstContactAt ?? at, lastContactAt: p.lastContactAt ?? at, updatedAt: at }).where(eq(supplierParticipations.id, p.id));
     await logActivity(tx, { orgId: line.orgId, entityType: "request_line", entityId: line.id, type: "rfq_sent", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { ref: line.lineRef, recipients } });
-    if (line.state === "cost_target_price" || line.state === "spec_frozen") await transition(line.id, "rfq_out", ctx, { tx, at, payload: { reached: recipients } });
+    if (line.state === "cost_target_price" || line.state === "spec_frozen") {
+      await transition(line.id, "rfq_out", ctx, { tx, at, payload: { reached: recipients } });
+      // QA-07: quotes logged before the RFQ was marked sent → straight on to quotes_in
+      if (await lineHasQuotes(tx, line.id)) await transition(line.id, "quotes_in", null, { tx, at: new Date(at.getTime() + 5) });
+    }
     return { lineRef: line.lineRef, recipients };
   });
+}
+
+/** States in which a logged quote means the line is behind (QA-07). */
+export const PRE_QUOTES_STATES: readonly State[] = ["spec_frozen", "cost_target_price", "rfq_out"];
+
+export async function lineHasQuotes(tx: DbOrTx, lineId: string): Promise<boolean> {
+  const [q] = await tx.select({ id: quotes.id }).from(quotes).innerJoin(supplierParticipations, eq(supplierParticipations.id, quotes.participationId))
+    .where(and(eq(supplierParticipations.requestLineId, lineId), isNull(supplierParticipations.deletedAt))).limit(1);
+  return !!q;
+}
+
+/**
+ * QA-07: a quote exists but the line is still in spec_frozen / cost_target_price / rfq_out (quotes were logged before
+ * "Mark RFQ sent"). Records the RFQ if none exists (auto, internal event) and walks the legal transitions to quotes_in.
+ * Returns the resulting state. No client email: all three states share the "Finding factory" milestone.
+ */
+export async function ensureQuotesIn(tx: Tx, line: { id: string; state: string; orgId: string; requestId: string; lineRef: string }, ctx: Ctx | null, at: Date): Promise<State> {
+  let state = line.state as State;
+  if (!PRE_QUOTES_STATES.includes(state)) return state;
+  let t = at.getTime();
+  if (state === "spec_frozen" || state === "cost_target_price") {
+    const [existing] = await tx.select({ id: rfqs.id }).from(rfqs).where(and(eq(rfqs.requestLineId, line.id), isNull(rfqs.deletedAt))).limit(1);
+    if (!existing) {
+      const parts = await tx.select({ id: supplierParticipations.id }).from(supplierParticipations).where(and(eq(supplierParticipations.requestLineId, line.id), isNull(supplierParticipations.deletedAt)));
+      await tx.insert(rfqs).values({ id: uuidv7(), requestId: line.requestId, requestLineId: line.id, orgId: line.orgId, version: 1, sentAt: at, recipientsCount: Math.max(1, parts.length), createdBy: ctx?.userId ?? null, createdAt: at, updatedAt: at });
+      await logActivity(tx, { orgId: line.orgId, entityType: "request_line", entityId: line.id, type: "rfq_sent", actorId: ctx?.userId ?? null, actorName: ctx?.name ?? "System", visibility: "internal", at, payload: { ref: line.lineRef, recipients: Math.max(1, parts.length), auto: true, text: `RFQ recorded automatically (quote logged before "Mark RFQ sent")` } });
+    }
+    await transition(line.id, "rfq_out", ctx, { tx, at: new Date(++t) });
+    state = "rfq_out";
+  }
+  await transition(line.id, "quotes_in", null, { tx, at: new Date(++t) });
+  return "quotes_in";
 }
 
 /** Header "Change state": any transition allowed by the table; admin override with reason. */
 export async function changeLineState(ctx: Ctx, input: { lineId: string; to: State; note?: string | null; override?: boolean; reason?: string | null }) {
   if (!isOps(ctx)) throw new Forbidden("ops only");
   if (input.override && ctx.role !== "admin") throw new Forbidden("admin only");
+  if (input.override && !(input.reason ?? "").trim()) throw new ZodError([{ code: "custom", path: ["reason"], message: "Give a reason for the override", input: input.reason } as never]);
+  if (!input.override) {
+    const cur = await lineById(await getDb(), input.lineId);
+    if (!TRANSITIONS[cur.state as State]?.includes(input.to)) throw new ZodError([{ code: "custom", path: ["to"], message: `Can't move from ${cur.state.replace(/_/g, " ")} to ${input.to.replace(/_/g, " ")} — tick "Override" (admin) and give a reason`, input: input.to } as never]);
+  }
   const r = await transition(input.lineId, input.to, ctx, { note: input.note ?? undefined, override: input.override && input.reason ? { reason: input.reason } : undefined, clearException: input.to === "negotiating" || input.to === "rfq_out" || input.to === "shortlisted" });
   const db = await getDb();
   const line = await lineById(db, input.lineId);

@@ -14,6 +14,8 @@ import { milestoneStep, isActionMilestone, isBeforeOrder, MILESTONES } from "@/s
 import { subLabelFor, exceptionClientText, eventText, isFeedEvent, MILESTONE_EVENT_TYPES } from "@/server/shared/labels";
 import { clientWaitingReason, etaLabelFor } from "./dashboard";
 import { clientDownloadUrl } from "./documents";
+import { lineExtras, milestoneDatesFor, specFieldsFor } from "./line-extras";
+import { collapseClientUpdates, collapseClientHistory } from "@/server/shared/timeline";
 import { ClientRequestLineDto, ClientDocumentDto, ClientUpdateDto, ClientEventDto, ClientTimelineDto, ClientPreviousOrderDto, type ClientDocumentDto as ClientDocument } from "./dto";
 import { ClientLinePageDto, ClientLineOfferCardDto, ClientLineSampleCardDto, ClientLineOrderCardDto } from "./dto/lines";
 
@@ -79,7 +81,7 @@ export async function clientTimeline(db: DbOrTx, ctx: Ctx, lc: LineContext) {
   ]
     .sort((a, b) => b.at.localeCompare(a.at))
     .filter((u) => { const k = `${u.at.slice(0, 10)}|${u.text}`; if (seen.has(k)) return false; seen.add(k); return true; });
-  return ClientTimelineDto.parse({ updates, history });
+  return ClientTimelineDto.parse({ updates: collapseClientUpdates(updates), history: collapseClientHistory(history) });
 }
 
 /** D-19: previous orders of the same product for this org (state ≥ delivered), excluding `excludeOrderId`. */
@@ -90,7 +92,7 @@ export async function previousOrdersOfProduct(db: DbOrTx, orgId: string, product
   return rows.filter((r) => r.o.id !== excludeOrderId).map(({ ol, o }) => ClientPreviousOrderDto.parse({ orderRef: o.ref, qty: ol.qty, unit: ol.unit, unitPrice: { minorE2: ol.unitPriceMinorE2, currency: o.currency, unit: ol.unit }, fee: o.pricingDisplay === "factory_plus_fee" ? { minor: ol.feeMinor, currency: o.currency } : null, deliveredAt: o.deliveredAt?.toISOString() ?? null }));
 }
 
-export function lineDto(lc: LineContext, extra: { specSummary: string | null; factoryLabel: string | null; sampleSkipped: boolean }) {
+export function lineDto(lc: LineContext, extra: { specSummary: string | null; factoryLabel: string | null; sampleSkipped: boolean; extras: ReturnType<typeof lineExtras> }) {
   const priceE2 = lc.order?.orderLine ? lc.order.orderLine.unitPriceMinorE2 : lc.offer?.status === "accepted" || lc.offer?.status === "sent" ? lc.offer.acceptedUnitPriceMinorE2 : null;
   const feeMinor = lc.order?.orderLine ? lc.order.orderLine.feeMinor : lc.offer?.acceptedFeeMinor ?? null;
   const pricingDisplay = lc.order?.pricingDisplay ?? lc.offer?.pricingDisplay ?? "factory_plus_fee";
@@ -98,7 +100,7 @@ export function lineDto(lc: LineContext, extra: { specSummary: string | null; fa
   return ClientRequestLineDto.parse({
     id: lc.id, ref: lc.ref, requestRef: lc.requestRef, lineNo: lc.lineNo, name: lc.name, qty: lc.qty, unit: lc.unit, clientSku: lc.clientSku, links: lc.links, note: lc.note,
     state: lc.state, milestone: lc.milestone, milestoneStep: milestoneStep(lc.milestone),
-    subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat }),
+    subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat, offerStatus: lc.offer?.status }),
     exception: lc.exception, exceptionText: exceptionClientText(lc.exception), sourcingProgress: lc.sourcing, agentName: lc.agentName, specVersion: lc.specVersion, specSummary: extra.specSummary,
     isRepeat: lc.isRepeat, fromCatalog: lc.fromCatalog, factoryLabel: extra.factoryLabel, waitingReason: clientWaitingReason(lc),
     price: priceE2 !== null && priceE2 !== undefined ? { minorE2: priceE2, currency: lc.offer?.currency ?? "USD", unit: lc.unit } : null,
@@ -106,8 +108,13 @@ export function lineDto(lc: LineContext, extra: { specSummary: string | null; fa
     etaDate, etaLabel: etaLabelFor(lc), offerRef: lc.offer && lc.offer.status !== "draft" ? lc.offer.ref : null, sampleRef: lc.sample?.ref ?? null, orderRef: lc.order?.ref ?? null,
     sampleSkipped: extra.sampleSkipped, lastChangeAt: lc.lastStateChangeAt.toISOString(), updatedAt: lc.updatedAt.toISOString(),
     canEdit: ["draft", "submitted", "in_review"].includes(lc.state) && lc.exception !== "cancelled", canCancel: isBeforeOrder(lc.state) && lc.exception !== "cancelled",
+    ...extra.extras, canRequestChange: canRequestSpecChange(lc),
   });
 }
+
+/** QA-08: a frozen spec (before an order exists) can only change through a formal change request. */
+export const canRequestSpecChange = (lc: Pick<LineContext, "state" | "exception" | "specVersion">) =>
+  !!lc.specVersion && isBeforeOrder(lc.state) && !["draft", "submitted", "in_review"].includes(lc.state) && lc.exception !== "cancelled" && lc.exception !== "change_requested";
 
 export async function getClientLine(ctx: Ctx, ref: string) {
   if (!isClient(ctx)) throw new Forbidden("clients only");
@@ -143,7 +150,9 @@ export async function getClientLine(ctx: Ctx, ref: string) {
       moq: opt?.moq ?? null, leadDays: opt?.leadDays ?? null, decidedAt: offerRow.decidedAt?.toISOString() ?? null,
     });
   }
-  const dto = lineDto(lc, { specSummary, factoryLabel, sampleSkipped });
+  const [dates, specs] = await Promise.all([milestoneDatesFor(db, ctx.orgId, [lc]), specFieldsFor(db, [lc.id])]);
+  // QA-23 (SPEC 5.5): the "Factory F-nnnn" label only on lines created from a range; the "More from this factory" link only once ordered
+  const dto = lineDto(lc, { specSummary, factoryLabel: lc.fromRangeId ? factoryLabel : null, sampleSkipped, extras: lineExtras(lc, dates, specs) });
   const primaryAction = dto.waitingReason === "offer_sent" && offerCard ? { label: "Accept price", href: offerCard.href }
     : dto.waitingReason === "sample_received" && latestSample ? { label: "Approve sample", href: `/app/samples/${latestSample.ref}` }
     : dto.waitingReason === "deposit_due" && lc.order ? { label: "View invoice", href: `/app/orders/${lc.order.ref}#payments` }
@@ -160,7 +169,7 @@ export async function getClientLine(ctx: Ctx, ref: string) {
     offer: offerCard,
     sample: latestSample ? ClientLineSampleCardDto.parse({ ref: latestSample.ref, href: `/app/samples/${latestSample.ref}`, status: latestSample.status, courier: latestSample.courier, tracking: latestSample.tracking, receivedAt: latestSample.receivedAt?.toISOString() ?? null, decidedAt: latestSample.decidedAt?.toISOString() ?? null }) : null,
     order: lc.order ? ClientLineOrderCardDto.parse({ ref: lc.order.ref, href: `/app/orders/${lc.order.ref}`, state: lc.order.state, milestone: lc.order.milestone, etaLabel: etaLabelFor(lc) }) : null,
-    factoryRange: factoryLabel ? { label: factoryLabel, href: lc.order ? `/app/orders/${lc.order.ref}/range` : `/app/catalog` } : null,
+    factoryRange: factoryLabel && lc.order ? { label: factoryLabel, href: `/app/orders/${lc.order.ref}/range` } : null,
     primaryAction,
   });
 }

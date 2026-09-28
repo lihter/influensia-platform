@@ -58,6 +58,8 @@ export type LineContext = {
   } | null;
   /** latest open client-visible question from an agent (needs_input excerpt) */
   openQuestion: string | null;
+  /** when that question was asked (QA-29: "since" for needs_input) */
+  openQuestionAt: Date | null;
   waiting: WaitingOn;
   stale: boolean;
 };
@@ -123,7 +125,8 @@ export async function loadLineContexts(db: DbOrTx, filter: { orgId?: string; lin
   const latestArtByOl = new Map<string, typeof artRows[number]>();
   for (const a of artRows) if (!latestArtByOl.has(a.orderLineId)) latestArtByOl.set(a.orderLineId, a);
   const openQuestion = new Map<string, string>();
-  for (const q of questionRows) if (!openQuestion.has(q.entityId)) openQuestion.set(q.entityId, q.body);
+  const openQuestionAt = new Map<string, Date>();
+  for (const q of questionRows) if (!openQuestion.has(q.entityId)) { openQuestion.set(q.entityId, q.body); openQuestionAt.set(q.entityId, q.createdAt); }
 
   return rows.map(({ line, requestRef, requestStatus, orgName }) => {
     const o = latestOffer.get(line.id) ?? null;
@@ -164,6 +167,7 @@ export async function loadLineContexts(db: DbOrTx, filter: { orgId?: string; lin
       sample: s ? { id: s.id, ref: s.ref, status: s.status } : null,
       order,
       openQuestion: openQuestion.get(line.id) ?? null,
+      openQuestionAt: openQuestionAt.get(line.id) ?? null,
       waiting: waitingOn(waitingInput),
       stale: isStale({ ...waitingInput, lastStateChangeAt: lastChange }, at),
     };

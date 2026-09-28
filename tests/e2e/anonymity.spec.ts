@@ -30,8 +30,13 @@ const NEEDLES: Array<[string, RegExp]> = [
 /**
  * Client-authored content that legitimately matches a generic pattern: KOFF's own draft REQ-2026-0322-01 carries the
  * alibaba.com reference link the buyer pasted (SPEC §7 seed). Showing a client its own link is not a supplier leak.
+ * Exempted precisely: the raw href, and the readable "alibaba.com › ultralight-camping-chair_…" label the smart-paste
+ * link chips render for it (client-format.ts `shortLink`, truncated at 40 chars) — nothing else on alibaba.com.
  */
-const CLIENT_AUTHORED = [/(?:www\.)?alibaba\.com(?:\/|%2F|\\\/)product-detail(?:\/|%2F|\\\/)ultralight-cam[\w.-]*/gi]; // display text is truncated
+const CLIENT_AUTHORED = [
+  /(?:www\.)?alibaba\.com(?:\/|%2F|\\\/)product-detail(?:\/|%2F|\\\/)ultralight-cam[\w.-]*/gi, // display text is truncated
+  /alibaba\.com\s*(?:›|\\u203a|&#8250;|&#x203a;|&rsaquo;)\s*ultralight-camping-chair_[\w.-]*(?:…|\\u2026|&#8230;|&hellip;)?/gi, // shortLink() label
+];
 
 /** Hits in `text`, also after URL- and HTML-entity-decoding (SPEC 5.4 "also URL-encoded and HTML-entity-encoded"). */
 function hits(input: string): string[] {

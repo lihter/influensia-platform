@@ -49,6 +49,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     <>
       <PageHeader
         sticky
+        crumbs={[{ href: "/ops/clients", label: "Clients" }, { label: org.name }]}
         eyebrow={`Client · ${org.country ?? "—"}${org.vatId ? ` · ${org.vatId}` : ""}`}
         title={org.name}
         titleSuffix={`since ${new Date(org.createdAt).getFullYear()}`}
@@ -61,32 +62,32 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
           </>
         }
       />
-      <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
-        <div className="flex min-w-0 flex-col gap-8">
-          <section aria-labelledby="s-settings">
-            <SectionHeading number={1} title={<span id="s-settings">{S.detail.settings}</span>} className="mb-4" />
-            <ClientSettingsCard org={org} admin={admin} save={updateClientSettingsAction} />
-          </section>
-          <section aria-labelledby="s-users">
-            <SectionHeading number={2} title={<span id="s-users">{S.detail.users} <span className="font-mono text-sm font-normal text-muted-foreground">{users.length}</span></span>} className="mb-4" />
-            <ClientUsersCard orgId={org.id} orgName={org.name} users={users} admin={admin} actions={{ add: addClientUserAction, deactivate: deactivateUserAction, reactivate: reactivateUserAction, resend: resendInviteAction }} />
-          </section>
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex min-w-0 flex-col gap-8 py-6 xl:pr-6">
           <section aria-labelledby="s-lines">
-            <SectionHeading number={3} title={<span id="s-lines">{S.detail.lines} <span className="font-mono text-sm font-normal text-muted-foreground">{lines.length}</span></span>} className="mb-4" />
+            <SectionHeading number={1} title={<span id="s-lines">{S.detail.lines} <span className="font-mono text-sm font-normal text-muted-foreground">{lines.length}</span></span>} className="mb-4" />
             <ClientLinesTable rows={lines} />
           </section>
           <section aria-labelledby="s-orders">
-            <SectionHeading number={4} title={<span id="s-orders">{S.detail.orders} <span className="font-mono text-sm font-normal text-muted-foreground">{orders.length}</span></span>} className="mb-4" />
+            <SectionHeading number={2} title={<span id="s-orders">{S.detail.orders} <span className="font-mono text-sm font-normal text-muted-foreground">{orders.length}</span></span>} className="mb-4" />
             <ClientOrdersTable rows={orders} />
+          </section>
+          <section aria-labelledby="s-users">
+            <SectionHeading number={3} title={<span id="s-users">{S.detail.users} <span className="font-mono text-sm font-normal text-muted-foreground">{users.length}</span></span>} className="mb-4" />
+            <ClientUsersCard orgId={org.id} orgName={org.name} users={users} admin={admin} actions={{ add: addClientUserAction, deactivate: deactivateUserAction, reactivate: reactivateUserAction, resend: resendInviteAction }} />
+          </section>
+          <section aria-labelledby="s-settings">
+            <SectionHeading number={4} title={<span id="s-settings">{S.detail.settings}</span>} className="mb-4" />
+            <ClientSettingsCard org={org} admin={admin} save={updateClientSettingsAction} />
           </section>
           <section aria-labelledby="s-activity">
             <SectionHeading number={5} title={<span id="s-activity">{S.detail.activity}</span>} className="mb-4" />
             <div className="rounded-xl border border-border bg-card p-5">
-              <Timeline entries={entries} showVisibility={false} emptyText={S.detail.activityEmpty} />
+              <Timeline entries={entries} showVisibility={false} limit={10} emptyText={S.detail.activityEmpty} />
             </div>
           </section>
         </div>
-        <aside className="-my-6 border-l border-hairline-strong bg-section-alt px-5 py-6 max-xl:hidden" aria-label="Client facts">
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none] max-xl:hidden" aria-label="Client facts"><div className="xl:sticky-under-header">
           <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">At a glance</div>
           <div className="mt-2 divide-y divide-hairline-faint">
             <Fact label="Users">{org.users}</Fact>
@@ -103,7 +104,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             <div className="px-4 pt-4 text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{S.detail.forecast}</div>
             <EmptyState icon={Gauge} title="Not enough data" body={S.detail.forecastBody} className="py-6" />
           </div>
-        </aside>
+        </div></aside>
       </div>
     </>
   );

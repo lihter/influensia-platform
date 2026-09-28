@@ -27,6 +27,7 @@ import { now } from "@/server/shared/clock";
 import { loadLineContexts } from "@/server/shared/line-context";
 import { waitingItems } from "@/server/client/dashboard";
 import { leakCheck, loadLeakSources } from "@/server/shared/leak-check";
+import { ORDER_CONFIRMED_TEXT } from "@/server/ops/orders";
 import { stripCompanySuffix } from "@/server/shared/leak-check";
 
 /* ───────────── helpers ───────────── */
@@ -75,18 +76,68 @@ function pdfBytes(text: string): Buffer {
   out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return Buffer.from(out, "latin1");
 }
-async function imageBytes(text: string, ext: "jpg" | "png"): Promise<Buffer> {
-  const sharp = (await import("sharp")).default;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#F3F1EA"/><rect x="40" y="40" width="720" height="520" fill="#FFFFFF" stroke="#E0D9CA"/><text x="400" y="290" font-family="sans-serif" font-size="28" text-anchor="middle" fill="#171717">${text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text><text x="400" y="330" font-family="monospace" font-size="16" text-anchor="middle" fill="#5F6670">placeholder · influensia seed</text></svg>`;
-  const s = sharp(Buffer.from(svg));
-  return ext === "jpg" ? s.jpeg({ quality: 80 }).toBuffer() : s.png().toBuffer();
+/**
+ * Demo images (UX review "placeholder images"): a clean product card — warm neutral background, soft shadowed tile,
+ * a simple line icon for the product family and the product name. No "placeholder"/"seed" wording anywhere.
+ */
+const ICONS: Record<string, string> = {
+  // 64×64 line drawings, stroke only
+  sleeve: '<rect x="14" y="8" width="36" height="48" rx="3"/><rect x="19" y="14" width="26" height="36" rx="2"/><path d="M14 16h36"/>',
+  shelf: '<path d="M14 8v48M50 8v48M14 14h36M14 26h36M14 38h36M14 50h36"/>',
+  glove: '<path d="M22 56V30l-6-8 3-3 7 6V12a3 3 0 0 1 6 0v12V9a3 3 0 0 1 6 0v15V12a3 3 0 0 1 6 0v18c0 10-4 18-10 26z"/>',
+  light: '<path d="M8 14c8 6 40 6 48 0"/><path d="M14 17v6M22 19v9M32 20v6M42 19v9M50 17v6"/><circle cx="14" cy="25" r="2"/><circle cx="22" cy="30" r="2"/><circle cx="32" cy="28" r="2"/><circle cx="42" cy="30" r="2"/><circle cx="50" cy="25" r="2"/>',
+  tree: '<path d="M32 6 18 26h8L14 42h12L10 54h44L38 42h12L38 26h8z"/><path d="M32 54v6"/>',
+  shed: '<path d="M8 28 32 10l24 18"/><path d="M12 25v31h40V25"/><rect x="26" y="38" width="12" height="18"/>',
+  box: '<path d="M8 20 32 8l24 12v24L32 56 8 44z"/><path d="M8 20l24 12 24-12M32 32v24"/>',
+  photo: '<rect x="8" y="14" width="48" height="36" rx="4"/><circle cx="32" cy="32" r="10"/><path d="M22 14l4-6h12l4 6"/>',
+  doc: '<path d="M16 6h22l10 10v42H16z"/><path d="M38 6v10h10M22 28h20M22 36h20M22 44h14"/>',
+};
+function iconFor(text: string): string {
+  const t = text.toLowerCase();
+  if (/sleeve|toploader|holder|bag|binder|album|card/.test(t)) return ICONS.sleeve;
+  if (/shelv|rack/.test(t)) return ICONS.shelf;
+  if (/glove/.test(t)) return ICONS.glove;
+  if (/light|led|lamp/.test(t)) return ICONS.light;
+  if (/tree|christmas/.test(t)) return ICONS.tree;
+  if (/shed|store/.test(t)) return ICONS.shed;
+  if (/sample|photo/.test(t)) return ICONS.photo;
+  if (/\.pdf|report|list|invoice/.test(t)) return ICONS.doc;
+  return ICONS.box;
 }
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function wrap(text: string, max = 30): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) { if ((cur + " " + w).trim().length > max && cur) { lines.push(cur); cur = w; } else cur = `${cur} ${w}`.trim(); }
+  if (cur) lines.push(cur);
+  return lines.slice(0, 3);
+}
+async function imageBytes(text: string, ext: "jpg" | "png", subtitle?: string): Promise<Buffer> {
+  const sharp = (await import("sharp")).default;
+  const lines = wrap(text);
+  const titleY = 400 - (lines.length - 1) * 18;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F7F5EF"/><stop offset="1" stop-color="#ECE8DD"/></linearGradient>
+  <filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#8A7F66" flood-opacity="0.18"/></filter></defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <ellipse cx="400" cy="318" rx="170" ry="18" fill="#D9D2C1" opacity="0.55"/>
+  <g filter="url(#sh)"><rect x="300" y="110" width="200" height="200" rx="28" fill="#FFFFFF"/></g>
+  <g transform="translate(336 146) scale(2)" fill="none" stroke="#2F6B4F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${iconFor(text)}</g>
+  ${lines.map((l, i) => `<text x="400" y="${titleY + i * 36}" font-family="Figtree, Helvetica, Arial, sans-serif" font-size="30" font-weight="600" text-anchor="middle" fill="#1C1C1A">${esc(l)}</text>`).join("")}
+  ${subtitle ? `<text x="400" y="${titleY + lines.length * 36 + 8}" font-family="Figtree, Helvetica, Arial, sans-serif" font-size="18" text-anchor="middle" fill="#6B6A63">${esc(subtitle)}</text>` : ""}
+</svg>`;
+  const s = sharp(Buffer.from(svg));
+  return ext === "jpg" ? s.jpeg({ quality: 86 }).toBuffer() : s.png().toBuffer();
+}
+/** "Sample-photo-1.jpg" → "Sample photo 1" (no file extension on the picture). */
+const pictureTitle = (filename: string) => filename.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ");
 async function fileBody(filename: string): Promise<{ data: Buffer; mime: string }> {
   const ext = filename.split(".").pop()!.toLowerCase();
   if (ext === "pdf") return { data: pdfBytes(filename), mime: "application/pdf" };
-  if (ext === "jpg" || ext === "jpeg") return { data: await imageBytes(filename, "jpg"), mime: "image/jpeg" };
-  if (ext === "png") return { data: await imageBytes(filename, "png"), mime: "image/png" };
-  if (ext === "xlsx") return { data: Buffer.from(`placeholder xlsx: ${filename}\n`), mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+  if (ext === "jpg" || ext === "jpeg") return { data: await imageBytes(pictureTitle(filename), "jpg"), mime: "image/jpeg" };
+  if (ext === "png") return { data: await imageBytes(pictureTitle(filename), "png"), mime: "image/png" };
+  if (ext === "xlsx") return { data: Buffer.from(/^quote-2026-09-12/.test(filename) ? "ZZLEAKTEST Co., Ltd. — quotation 2026-09-12 (canary: never publish)\n" : `${filename}\n`), mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
   return { data: Buffer.from(`placeholder: ${filename}\n`), mime: "application/octet-stream" };
 }
 
@@ -195,7 +246,7 @@ export async function seed() {
     for (const s of p.specs) { await db.insert(A.productSpecs).values({ id: id(), productId: pid, version: s.v, fields: s.fields, frozenAt: d(s.at), frozenBy: U("bogdan"), createdAt: d(s.at) }); bump("product_specs"); }
     if (p.catalog) {
       for (const kind of ["clean", "supplier_facing"] as const) {
-        const body = await imageBytes(`${p.ref} ${kind}`, "jpg");
+        const body = await imageBytes(p.name, "jpg", p.catalog ? `MOQ ${p.catalog.moq.toLocaleString("en-US")} ${p.unit === "pcs" ? "pcs" : `${p.unit}s`}` : undefined);
         const f = await storeUpload(db, { orgId: kind === "clean" ? AGENCY.id : p.owner, userId: U("bogdan"), data: body, mime: "image/jpeg", originalName: `${p.ref}-${kind}.jpg`, entity: "product", entityId: pid, visibility: kind === "clean" ? "client" : "internal", at: d("2026-09-21") });
         await db.insert(A.productImages).values({ id: id(), productId: pid, fileId: f.id, kind, approvedBy: kind === "clean" ? U("marko") : null, createdAt: d("2026-09-21") });
         bump("product_images");
@@ -203,6 +254,12 @@ export async function seed() {
     }
   }
   const PRD = (ref: string) => ids[ref];
+  /** "66×91 mm, 80 µm single wall, PP virgin" — the frozen spec in one line (booleans as words, no snake_case). */
+  const specSummaryOf = (prdRef?: string) => {
+    const pr = prods.find((x) => x.ref === prdRef);
+    const f = pr?.specs[pr.specs.length - 1]?.fields ?? {};
+    return Object.entries(f).map(([k, v]) => (typeof v === "boolean" ? (v ? k.replace(/_/g, "-").replace("pvc-free", "PVC-free") : "") : String(v))).filter(Boolean).slice(0, 4).join(", ");
+  };
 
   /* 7.6 requests + lines */
   type Req = { ref: string; org: string; source: "portal" | "import" | "agent_on_behalf"; clientRef?: string; submitted?: string; note?: string; createdBy: string; status: "draft" | "submitted" | "active" | "closed" };
@@ -229,14 +286,14 @@ export async function seed() {
     { ref: "REQ-2026-0290-01", req: "REQ-2026-0290", no: 1, prd: "PRD-0001", name: "Boltless steel shelving 5-tier 180×90×40 black", qty: 1000, unit: "set", state: "delivered", last: "2026-08-28", agent: "bogdan", links: ["https://allegro.pl/oferta/regal-metalowy-180x90x40"], specV: 2, artwork: false, sample: false, created: "2026-06-01" },
     { ref: "REQ-2026-0301-01", req: "REQ-2026-0301", no: 1, prd: "PRD-0002", name: "Work gloves red latex crinkle, size 10", qty: 10000, unit: "pair", state: "offer_ready", last: "2026-09-26", agent: "bogdan", links: ["https://allegro.pl/oferta/rekawiczki-rekawice-robocze-r10-latex-10-par-wytrzymale-porowate-red-lateks-12539547048"], specV: 1, cost: { est: 0.17, target: 0.204, confirmedAt: "2026-09-12" }, artwork: true, sample: false, created: "2026-09-10" },
     { ref: "REQ-2026-0305-01", req: "REQ-2026-0305", no: 1, prd: "PRD-0003", name: "Icicle lights 500 LED 24 m", qty: 1000, unit: "set", state: "negotiating", last: "2026-09-24", agent: "bogdan", links: ["https://allegro.pl/oferta/sople-500-led-24m"], specV: 1, cost: { est: 7.1, target: 8.52, confirmedAt: "2026-09-13" }, created: "2026-09-12" },
-    { ref: "REQ-2026-0312-01", req: "REQ-2026-0312", no: 1, prd: "PRD-0004", name: "Standard sleeves 66×91 mm, 100 µm, PP, 100/bag", qty: 100000, unit: "pcs", state: "in_production", last: "2026-09-23", agent: "bogdan", sku: "KOFF-312-01", specV: 1, cost: { est: 0.031, target: 0.037, material: 0.004, process: 0.02, packaging: 0.004, overhead: 10, confirmedAt: "2026-09-04" }, artwork: true, sample: true, created: "2026-09-01" },
-    { ref: "REQ-2026-0312-02", req: "REQ-2026-0312", no: 2, prd: "PRD-0005", name: "Standard sleeves 66×91 mm, 80 µm", qty: 100000, unit: "pcs", state: "sampling", last: "2026-09-19", agent: "bogdan", sku: "KOFF-312-02", specV: 1, cost: { est: 0.027, target: 0.032, confirmedAt: "2026-09-04" }, sample: true, created: "2026-09-01" },
-    { ref: "REQ-2026-0312-03", req: "REQ-2026-0312", no: 3, prd: "PRD-0006", name: "Japanese size 62×89 mm, 100 µm", qty: 50000, unit: "pcs", state: "negotiating", last: "2026-09-22", agent: "bogdan", sku: "KOFF-312-03", specV: 1, cost: { est: 0.03, target: 0.036, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
-    { ref: "REQ-2026-0312-05", req: "REQ-2026-0312", no: 5, prd: "PRD-0007", name: "Team bag 66×91", qty: 50000, unit: "pcs", state: "quotes_in", last: "2026-09-23", agent: "bogdan", sku: "KOFF-312-05", specV: 1, cost: { est: 0.0075, target: 0.009, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
-    { ref: "REQ-2026-0312-11", req: "REQ-2026-0312", no: 11, prd: "PRD-0008", name: "Toploader 35pt 76.2×103.2 mm, PVC-free", qty: 20000, unit: "pcs", state: "quotes_in", last: "2026-09-24", agent: "bogdan", sku: "KOFF-312-11", specV: 1, cost: { est: 0.108, target: 0.13, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
-    { ref: "REQ-2026-0312-14", req: "REQ-2026-0312", no: 14, prd: "PRD-0009", name: "Toploader 130pt", qty: 5000, unit: "pcs", state: "rfq_out", last: "2026-09-12", agent: "bogdan", sku: "KOFF-312-14", specV: 1, cost: { est: 0.25, target: 0.3, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
-    { ref: "REQ-2026-0312-20", req: "REQ-2026-0312", no: 20, prd: "PRD-0010", name: "Magnetic one-touch holder 35pt (pull ≥ 1.5 kg)", qty: 5000, unit: "pcs", state: "quotes_in", last: "2026-09-23", agent: "bogdan", sku: "KOFF-312-20", specV: 1, cost: { est: 1.58, target: 1.9, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
-    { ref: "REQ-2026-0312-26", req: "REQ-2026-0312", no: 26, prd: "PRD-0011", name: "Album/binder 9-pocket, 360 pockets, PP pages", qty: 2000, unit: "pcs", state: "spec_frozen", last: "2026-09-17", agent: "bogdan", sku: "KOFF-312-26", specV: 1, created: "2026-09-01" },
+    { ref: "REQ-2026-0312-01", req: "REQ-2026-0312", no: 1, prd: "PRD-0004", name: "Standard sleeves 66×91 mm, 100 µm, PP, 100/bag", qty: 100000, unit: "pcs", state: "in_production", last: "2026-09-23", agent: "bogdan", sku: "P312-01", specV: 1, cost: { est: 0.031, target: 0.037, material: 0.004, process: 0.02, packaging: 0.004, overhead: 10, confirmedAt: "2026-09-04" }, artwork: true, sample: true, created: "2026-09-01" },
+    { ref: "REQ-2026-0312-02", req: "REQ-2026-0312", no: 2, prd: "PRD-0005", name: "Standard sleeves 66×91 mm, 80 µm", qty: 100000, unit: "pcs", state: "sampling", last: "2026-09-19", agent: "bogdan", sku: "P312-02", specV: 1, cost: { est: 0.027, target: 0.032, confirmedAt: "2026-09-04" }, sample: true, created: "2026-09-01" },
+    { ref: "REQ-2026-0312-03", req: "REQ-2026-0312", no: 3, prd: "PRD-0006", name: "Japanese size 62×89 mm, 100 µm", qty: 50000, unit: "pcs", state: "negotiating", last: "2026-09-22", agent: "bogdan", sku: "P312-03", specV: 1, cost: { est: 0.03, target: 0.036, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
+    { ref: "REQ-2026-0312-05", req: "REQ-2026-0312", no: 5, prd: "PRD-0007", name: "Team bag 66×91", qty: 50000, unit: "pcs", state: "quotes_in", last: "2026-09-23", agent: "bogdan", sku: "P312-05", specV: 1, cost: { est: 0.0075, target: 0.009, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
+    { ref: "REQ-2026-0312-11", req: "REQ-2026-0312", no: 11, prd: "PRD-0008", name: "Toploader 35pt 76.2×103.2 mm, PVC-free", qty: 20000, unit: "pcs", state: "quotes_in", last: "2026-09-24", agent: "bogdan", sku: "P312-11", specV: 1, cost: { est: 0.108, target: 0.13, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
+    { ref: "REQ-2026-0312-14", req: "REQ-2026-0312", no: 14, prd: "PRD-0009", name: "Toploader 130pt", qty: 5000, unit: "pcs", state: "rfq_out", last: "2026-09-12", agent: "bogdan", sku: "P312-14", specV: 1, cost: { est: 0.25, target: 0.3, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
+    { ref: "REQ-2026-0312-20", req: "REQ-2026-0312", no: 20, prd: "PRD-0010", name: "Magnetic one-touch holder 35pt (pull ≥ 1.5 kg)", qty: 5000, unit: "pcs", state: "quotes_in", last: "2026-09-23", agent: "bogdan", sku: "P312-20", specV: 1, cost: { est: 1.58, target: 1.9, confirmedAt: "2026-09-04" }, created: "2026-09-01" },
+    { ref: "REQ-2026-0312-26", req: "REQ-2026-0312", no: 26, prd: "PRD-0011", name: "Album/binder 9-pocket, 360 pockets, PP pages", qty: 2000, unit: "pcs", state: "spec_frozen", last: "2026-09-17", agent: "bogdan", sku: "P312-26", specV: 1, created: "2026-09-01" },
     { ref: "REQ-2026-0318-01", req: "REQ-2026-0318", no: 1, prd: "PRD-0015", name: "Christmas tree 180 cm 507 tips PVC", qty: 2000, unit: "pcs", state: "quotes_in", last: "2026-09-16", agent: "cristina", links: ["https://allegro.pl/oferta/choinka-sztuczna-180cm-springos"], specV: 1, created: "2026-09-14" },
     { ref: "REQ-2026-0321-01", req: "REQ-2026-0321", no: 1, prd: "PRD-0012", name: "Metal apex shed 201×181×190", qty: 200, unit: "set", state: "quotes_in", last: "2026-09-25", agent: "marko", sku: "SHEDS-3210-01", links: ["https://allegro.pl/oferta/domek-ogrodowy-narzedziowy-metalowy-na-narzedzia-vector-7x6-201x190cm-garaz-18438914106"], specV: 1, created: "2026-09-18" },
     { ref: "REQ-2026-0321-02", req: "REQ-2026-0321", no: 2, prd: "PRD-0013", name: "Resin shed 130×192×198", qty: 200, unit: "set", state: "quotes_in", last: "2026-09-25", agent: "marko", sku: "SHEDS-3210-02", links: ["https://allegro.pl/oferta/domek-ogrodowy-narzedziowy-keter-manor-4x6s-schowek-na-narzedzia-192x130cm-12826867592"], specV: 1, created: "2026-09-18" },
@@ -278,7 +335,7 @@ export async function seed() {
     { line: "REQ-2026-0312-01", sup: "SUP-0012", status: "contacted", first: "2026-09-05", last: "2026-09-18" },
     { line: "REQ-2026-0312-01", sup: "SUP-0013", status: "contacted", first: "2026-09-13", last: "2026-09-13" },
     { line: "REQ-2026-0312-01", sup: "SUP-0014", status: "cannot_make", reason: "metal only", first: "2026-09-05", last: "2026-09-05" },
-    { line: "REQ-2026-0312-01", sup: "SUP-0017", status: "quoted", first: "2026-09-08", last: "2026-09-12", quotes: [{ at: "2026-09-12", incoterm: "FOB", uncertain: true, port: "Shenzhen", breaks: [[100000, 0.05]], moq: 100000, lead: 30, valid: "2026-09-20", file: "ZZLEAKTEST-quote.xlsx" }] },
+    { line: "REQ-2026-0312-01", sup: "SUP-0017", status: "quoted", first: "2026-09-08", last: "2026-09-12", quotes: [{ at: "2026-09-12", incoterm: "FOB", uncertain: true, port: "Shenzhen", breaks: [[100000, 0.05]], moq: 100000, lead: 30, valid: "2026-09-20", file: "quote-2026-09-12.xlsx" }] },
     { line: "REQ-2026-0312-02", sup: "SUP-0007", status: "selected", first: "2026-09-05", last: "2026-09-26", quotes: [{ at: "2026-09-15", incoterm: "FOB", port: "Shenzhen", breaks: [[100000, 0.045]], moq: 100000, lead: 30, valid: "2026-09-30", weight: 0.51 }] },
     { line: "REQ-2026-0312-02", sup: "SUP-0008", status: "dropped", reason: "trader", first: "2026-09-05", last: "2026-09-05", quotes: [{ at: "2026-09-06", incoterm: "FOB", port: "Ningbo", breaks: [[100000, 0.028]], moq: 100000, valid: "2026-09-08" }] },
     { line: "REQ-2026-0312-02", sup: "SUP-0009", status: "quoted", first: "2026-09-06", last: "2026-09-16", quotes: [{ at: "2026-09-10", incoterm: "EXW", uncertain: true, breaks: [[100000, 0.03]], moq: 100000, valid: "2026-10-15" }] },
@@ -378,7 +435,7 @@ export async function seed() {
   const INSP0290 = id();
   await db.insert(A.inspections).values({ id: INSP0290, orgId: KOFF.id, orderId: ORD0290, poId: PO0290 as never, inspector: "Bogdan", scheduledFor: "2026-07-08", inspectedAt: d("2026-07-08"), aql: "2.5", sampleSize: 125, result: "pass", defectsNote: "0 critical, 3 minor", visibleToClient: true, createdBy: U("bogdan"), createdAt: d("2026-07-06"), updatedAt: d("2026-07-08") });
   const SHIP0290 = id();
-  await db.insert(A.shipments).values({ id: SHIP0290, orgId: KOFF.id, orderId: ORD0290, forwarder: "Rohlig Suus (client)", forwarderParty: "client", bookingRef: "RS-2026-07-4471", mode: "sea", containerOrAwb: "MSKU4471021", cargoReady: "2026-07-10", exworksShippedAt: d("2026-07-11"), etd: "2026-07-14", etaPort: "2026-08-26", portOfDischarge: "Gdańsk", arrivedPortAt: d("2026-08-26"), customsStatus: "cleared", deliveredAt: d("2026-08-28"), createdBy: U("bogdan"), createdAt: d("2026-07-10"), updatedAt: d("2026-08-28") });
+  await db.insert(A.shipments).values({ id: SHIP0290, orgId: KOFF.id, orderId: ORD0290, forwarder: "Rohlig Suus", forwarderParty: "client", bookingRef: "RS-2026-07-4471", mode: "sea", containerOrAwb: "MSKU4471021", cargoReady: "2026-07-10", exworksShippedAt: d("2026-07-11"), etd: "2026-07-14", etaPort: "2026-08-26", portOfDischarge: "Gdańsk", arrivedPortAt: d("2026-08-26"), customsStatus: "cleared", deliveredAt: d("2026-08-28"), createdBy: U("bogdan"), createdAt: d("2026-07-10"), updatedAt: d("2026-08-28") });
   bump("orders"); bump("order_lines"); bump("purchase_orders"); bump("inspections"); bump("shipments");
 
   const ORD0312 = id(); ids["ORD-2026-0312"] = ORD0312;
@@ -423,7 +480,8 @@ export async function seed() {
   await doc("dieline0312", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "Dieline-sleeve-66x91.pdf", kind: "dieline", visibility: "client", by: "bogdan", at: "2026-09-20", publishedAt: "2026-09-20" });
   await doc("artwork0312", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "Artwork-sleeves-v1.pdf", kind: "artwork", visibility: "client", by: "piotr", at: "2026-09-22" });
   await doc("po0312", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "PO-2026-0312-01.pdf", kind: "other", visibility: "internal", by: "bogdan", at: "2026-09-21" });
-  await doc("zzleak-order", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "ZZLEAKTEST-quote.xlsx", kind: "quote_file", visibility: "internal", by: "bogdan", at: "2026-09-21" });
+  // canary copy on the order: neutral file name (UX review), canary text inside the file (anonymity tests still find it)
+  await doc("zzleak-order", { entity: "order", entityId: ORD0312, org: PIOTR.id, filename: "quote-2026-09-12-copy.xlsx", kind: "quote_file", visibility: "internal", by: "bogdan", at: "2026-09-21" });
   await db.update(S.purchaseOrders).set({ documentId: docIds.po0312 }).where(eq(S.purchaseOrders.id, PO0312));
   const art0312 = id();
   await db.insert(A.artworks).values({ id: art0312, orgId: PIOTR.id, orderLineId: OL0312, version: 1, fileId: (await db.select({ fileId: A.documents.fileId }).from(A.documents).where(eq(A.documents.id, docIds.artwork0312)))[0].fileId, dielineFileId: (await db.select({ fileId: A.documents.fileId }).from(A.documents).where(eq(A.documents.id, docIds.dieline0312)))[0].fileId, status: "approved", decidedAt: d("2026-09-23"), decidedBy: U("bogdan"), approvedBy: U("bogdan"), createdBy: U("piotr"), createdAt: d("2026-09-22"), updatedAt: d("2026-09-23") });
@@ -479,8 +537,21 @@ export async function seed() {
   await comment({ entity: "request", entityId: REQ("REQ-2026-0325"), org: KOFF.id, visibility: "internal", kind: "note", by: "marko", at: "2026-09-27", body: "Bogdan says ASAP; top 10 of this type" });
 
   /* activity events — state histories (client-visible) + internal board events */
+  /**
+   * UX review "timestamps read naturally": every event of one request/order on one day moves by the same deterministic
+   * offset (0–4 h 50 min), so days don't all start at 09:00 sharp while the order within a day is kept.
+   */
+  const naturalAt = (at: string, time: string | undefined, key: string) => {
+    let h = 0;
+    for (const ch of `${key}|${at}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const base = d(at, time ?? "09:00");
+    const shifted = new Date(base.getTime() + ((h % 59) * 5) * 60_000);
+    return shifted.getTime() > AT.getTime() ? base : shifted;
+  };
   const ev = async (p: { entity: EntityType; entityId: string; org: string; type: ActivityType; by?: string | null; at: string; time?: string; visibility?: Visibility; payload?: Record<string, unknown> }) => {
-    await logActivity(db, { orgId: p.org, entityType: p.entity, entityId: p.entityId, type: p.type, actorId: p.by ? U(p.by) : null, actorName: p.by ? NAME[U(p.by)] : "System", visibility: p.visibility ?? "client", at: d(p.at, p.time), payload: p.payload ?? {} });
+    const ref = String(p.payload?.ref ?? p.entityId);
+    const key = ref.match(/\d{4}-\d{4}/)?.[0] ?? ref;
+    await logActivity(db, { orgId: p.org, entityType: p.entity, entityId: p.entityId, type: p.type, actorId: p.by ? U(p.by) : null, actorName: p.by ? NAME[U(p.by)] : "System", visibility: p.visibility ?? "client", at: naturalAt(p.at, p.time, key), payload: p.payload ?? {} });
     bump("activity_events");
   };
   const stateEv = (entity: EntityType, entityId: string, org: string, ref: string, from: LineState, to: LineState, at: string, extra: Record<string, unknown> = {}, by?: string | null, time?: string) =>
@@ -516,17 +587,17 @@ export async function seed() {
   await ev({ entity: "request_line", entityId: L01, org: PIOTR.id, type: "sample_status_changed", by: "bogdan", at: "2026-09-18", payload: { ref: "REQ-2026-0312-01", sampleRef: "SMP-2026-0312-01-1", status: "received", text: "Sample received" } });
   await ev({ entity: "request_line", entityId: L01, org: PIOTR.id, type: "sample_decided", by: "piotr", at: "2026-09-19", payload: { ref: "REQ-2026-0312-01", sampleRef: "SMP-2026-0312-01-1", decision: "approved", text: "Sample approved" } });
   await stateEv("request_line", L01, PIOTR.id, "REQ-2026-0312-01", "sampling", "offer_accepted", "2026-09-19", {}, "piotr", "09:01");
-  await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "order_confirmed", by: "bogdan", at: "2026-09-20", payload: { ref: "ORD-2026-0312", piNumber: "PI-ORD-2026-0312", text: "Order confirmed — invoice PI-ORD-2026-0312 issued" } });
-  await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "offer_accepted", "order_confirmed", "2026-09-20", { piNumber: "PI-ORD-2026-0312", text: "Order confirmed — invoice PI-ORD-2026-0312 issued" }, "bogdan", "09:01");
-  await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "document_published", by: "bogdan", at: "2026-09-20", time: "09:02", payload: { ref: "ORD-2026-0312", kind: "pi", kindLabel: "Proforma invoice" } });
-  await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "order_confirmed", "awaiting_deposit", "2026-09-20", {}, null, "09:03");
+  // QA-04: one "Order confirmed" item; the invoice is announced when the PI is published (awaiting_deposit)
+  await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "order_confirmed", by: "bogdan", at: "2026-09-20", payload: { ref: "ORD-2026-0312", milestone: "order_confirmed", text: ORDER_CONFIRMED_TEXT } });
+  await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "document_published", by: "bogdan", at: "2026-09-20", time: "11:40", payload: { ref: "ORD-2026-0312", kind: "pi", kindLabel: "Proforma invoice" } });
+  await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "order_confirmed", "awaiting_deposit", "2026-09-20", { feed: true, text: "Invoice PI-ORD-2026-0312 is ready — deposit and fee due 25 Sep 2026" }, "bogdan", "11:41");
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "payment_recorded", by: "bogdan", at: "2026-09-22", payload: { ref: "ORD-2026-0312", kind: "deposit", text: "Deposit received" } });
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "payment_recorded", by: "bogdan", at: "2026-09-22", time: "09:01", payload: { ref: "ORD-2026-0312", kind: "fee", text: "Fee received" } });
   await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "awaiting_deposit", "awaiting_artwork", "2026-09-22", {}, null, "09:02");
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "artwork_submitted", by: "piotr", at: "2026-09-22", time: "14:00", payload: { ref: "ORD-2026-0312", version: 1 } });
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "artwork_decided", by: "bogdan", at: "2026-09-23", payload: { ref: "ORD-2026-0312", decision: "approved", text: "Artwork approved" } });
   await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "po_updated", by: "bogdan", at: "2026-09-21", visibility: "internal", payload: { ref: "ORD-2026-0312", poRef: "PO-2026-0312-01", supplierName: "Dongguan Yuantuo Packaging Products Co., Ltd.", status: "issued" } });
-  await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "po_updated", by: "bogdan", at: "2026-09-21", time: "09:30", visibility: "internal", payload: { ref: "ORD-2026-0312", note: "ZZLEAKTEST-quote.xlsx attached for reference — canary; never publish" } });
+  await ev({ entity: "order", entityId: ORD0312, org: PIOTR.id, type: "po_updated", by: "bogdan", at: "2026-09-21", time: "09:30", visibility: "internal", payload: { ref: "ORD-2026-0312", note: "Second-source quote (ZZLEAKTEST canary) attached for reference — never publish" } });
   await stateEv("order", ORD0312, PIOTR.id, "ORD-2026-0312", "awaiting_artwork", "in_production", "2026-09-23", { eta: "2026-10-25", text: "In production — ex-works ETA 25 Oct 2026" }, "bogdan", "09:05");
 
   // other REQ-2026-0312 lines (compact histories)
@@ -535,8 +606,10 @@ export async function seed() {
     await ev({ entity: "request_line", entityId: lid, org: PIOTR.id, type: "line_assigned", by: "bogdan", at: "2026-09-02", visibility: "internal", payload: { ref: l.ref, agentName: "Bogdan" } });
     await stateEv("request_line", lid, PIOTR.id, l.ref, "submitted", "in_review", "2026-09-02", { agentName: "Bogdan" }, "bogdan");
     const frozen = l.no === 26 ? "2026-09-17" : "2026-09-03";
-    await ev({ entity: "request_line", entityId: lid, org: PIOTR.id, type: "spec_frozen", by: "bogdan", at: frozen, payload: { ref: l.ref, version: 1 } });
-    await stateEv("request_line", lid, PIOTR.id, l.ref, "in_review", "spec_frozen", frozen, {}, "bogdan", "09:01");
+    // UX review: one readable "Spec confirmed: …" per line (not six identical "Spec confirmed (v1)"), minutes apart
+    const mm = String(l.no * 2).padStart(2, "0"); // lines 2…26 → 09:04…09:52
+    await ev({ entity: "request_line", entityId: lid, org: PIOTR.id, type: "spec_frozen", by: "bogdan", at: frozen, time: `09:${mm}`, payload: { ref: l.ref, version: 1, summary: specSummaryOf(l.prd), text: `Spec confirmed: ${specSummaryOf(l.prd)}` } });
+    await stateEv("request_line", lid, PIOTR.id, l.ref, "in_review", "spec_frozen", frozen, {}, "bogdan", `09:${String(l.no * 2 + 1).padStart(2, "0")}`);
     const chain: [LineState, string][] = l.state === "spec_frozen" ? [] : l.state === "rfq_out" ? [["cost_target_price", "2026-09-04"], ["rfq_out", l.last]]
       : l.state === "quotes_in" ? [["cost_target_price", "2026-09-04"], ["rfq_out", "2026-09-05"], ["quotes_in", l.last]]
       : l.state === "negotiating" ? [["cost_target_price", "2026-09-04"], ["rfq_out", "2026-09-05"], ["quotes_in", "2026-09-15"], ["negotiating", l.last]]
@@ -573,7 +646,7 @@ export async function seed() {
     for (const [to, at] of h.chain) {
       const extra = to === "in_review" ? { agentName: h.agent } : {};
       await stateEv("request_line", lid, h.org, h.line, prev, to, at, extra, h.agent?.toLowerCase() ?? null, "10:00");
-      if (to === "spec_frozen") await ev({ entity: "request_line", entityId: lid, org: h.org, type: "spec_frozen", by: h.agent!.toLowerCase(), at, time: "09:59", payload: { ref: h.line, version: 1 } });
+      if (to === "spec_frozen") { const prd = lines.find((l) => l.ref === h.line)?.prd; await ev({ entity: "request_line", entityId: lid, org: h.org, type: "spec_frozen", by: h.agent!.toLowerCase(), at, time: "09:59", payload: { ref: h.line, version: 1, summary: specSummaryOf(prd), text: `Spec confirmed: ${specSummaryOf(prd)}` } }); }
       prev = to;
     }
   }
@@ -582,16 +655,16 @@ export async function seed() {
   await ev({ entity: "request_line", entityId: LINE("REQ-2026-0290-01"), org: KOFF.id, type: "offer_decided", by: "anna", at: "2026-06-15", payload: { ref: "REQ-2026-0290-01", offerRef: "OFR-2026-0290-01-v1", decision: "accepted", option: "A", text: "Offer accepted (Option A)" } });
   // ORD-2026-0290 history
   const h0290: [LineState, LineState, string, Record<string, unknown>][] = [
-    ["offer_accepted", "order_confirmed", "2026-06-15", { piNumber: "PI-ORD-2026-0290" }], ["order_confirmed", "awaiting_deposit", "2026-06-15", {}], ["awaiting_deposit", "in_production", "2026-06-20", { eta: "2026-07-10" }],
+    ["order_confirmed", "awaiting_deposit", "2026-06-15", { feed: true, text: "Invoice PI-ORD-2026-0290 is ready — deposit and fee due 20 Jun 2026" }], ["awaiting_deposit", "in_production", "2026-06-20", { eta: "2026-07-10" }],
     ["in_production", "qc_inspection", "2026-07-06", {}], ["qc_inspection", "awaiting_balance", "2026-07-08", {}], ["awaiting_balance", "forwarder_booked", "2026-07-10", {}], ["forwarder_booked", "shipped_exworks", "2026-07-11", {}],
     ["shipped_exworks", "departed_origin", "2026-07-14", { etd: "2026-07-14", etaPort: "2026-08-26" }], ["departed_origin", "eu_port_customs", "2026-08-26", {}], ["eu_port_customs", "delivered", "2026-08-28", {}],
   ];
-  await ev({ entity: "order", entityId: ORD0290, org: KOFF.id, type: "order_confirmed", by: "bogdan", at: "2026-06-15", payload: { ref: "ORD-2026-0290", piNumber: "PI-ORD-2026-0290", text: "Order confirmed — invoice PI-ORD-2026-0290 issued" } });
+  await ev({ entity: "order", entityId: ORD0290, org: KOFF.id, type: "order_confirmed", by: "bogdan", at: "2026-06-15", payload: { ref: "ORD-2026-0290", milestone: "order_confirmed", text: ORDER_CONFIRMED_TEXT } });
   let hour = 10;
   for (const [from, to, at, extra] of h0290) await stateEv("order", ORD0290, KOFF.id, "ORD-2026-0290", from, to, at, extra, "bogdan", `${String(hour++ % 24).padStart(2, "0")}:00`);
   await ev({ entity: "order", entityId: ORD0290, org: KOFF.id, type: "inspection_recorded", by: "bogdan", at: "2026-07-08", time: "09:30", payload: { ref: "ORD-2026-0290", result: "pass", text: "Quality check passed — 0 critical, 3 minor" } });
   for (const [kind, at] of [["deposit", "2026-06-20"], ["fee", "2026-06-20"], ["balance", "2026-07-09"]] as const) await ev({ entity: "order", entityId: ORD0290, org: KOFF.id, type: "payment_recorded", by: "bogdan", at, time: "08:00", payload: { ref: "ORD-2026-0290", kind, text: `${kind[0].toUpperCase()}${kind.slice(1)} received` } });
-  await ev({ entity: "order", entityId: ORD0290, org: KOFF.id, type: "shipment_updated", by: "bogdan", at: "2026-07-10", time: "11:00", visibility: "internal", payload: { ref: "ORD-2026-0290", forwarder: "Rohlig Suus (client)", forwarderParty: "client", note: "Supplier SUP-0001 disclosed to KOFF: client forwarder picks up at the factory" } });
+  await ev({ entity: "order", entityId: ORD0290, org: KOFF.id, type: "shipment_updated", by: "bogdan", at: "2026-07-10", time: "11:00", visibility: "internal", payload: { ref: "ORD-2026-0290", forwarder: "Rohlig Suus", forwarderParty: "client", note: "Supplier SUP-0001 disclosed to KOFF: client forwarder picks up at the factory" } });
   await ev({ entity: "supplier", entityId: SUP("SUP-0001"), org: KOFF.id, type: "shipment_updated", by: "bogdan", at: "2026-07-10", time: "11:01", visibility: "internal", payload: { note: "disclosed_to_org_ids += KOFF (forwarder_party=client on ORD-2026-0290)" } });
   await ev({ entity: "factory_range", entityId: FR, org: PIOTR.id, type: "range_published", by: "marko", at: "2026-09-21", payload: { ref: "FR-0001", factoryLabel: "F-0042", text: "More from this factory is available" } });
   for (const p of prods.filter((x) => x.catalog)) await ev({ entity: "product", entityId: PRD(p.ref), org: AGENCY.id, type: "product_published", by: "marko", at: "2026-09-21", visibility: "internal", payload: { ref: p.ref } });
@@ -650,7 +723,7 @@ export async function seed() {
   writeFileSync(path.join(fx, "leaky-range.pdf"), pdfBytes("Range — Qingdao Ecosino"));
   writeFileSync(path.join(fx, "clean-range.pdf"), pdfBytes("Range — shelving, racks, brackets"));
   writeFileSync(path.join(fx, "artwork.pdf"), pdfBytes("Artwork v1"));
-  writeFileSync(path.join(fx, "sample-02.jpg"), await imageBytes("sample-02.jpg", "jpg"));
+  writeFileSync(path.join(fx, "sample-02.jpg"), await imageBytes("Sample photo — sleeves 80 µm", "jpg"));
   writeFileSync(path.join(fx, "order312_sample.csv"), "Name,Link,Qty\n" + lines.filter((l) => l.req === "REQ-2026-0312").map((l) => `"${l.name}",,${l.qty}`).join("\n") + "\n");
 
   /* 7.16 consistency checks */
@@ -659,13 +732,18 @@ export async function seed() {
   const koffWaiting = waitingItems(ctxs.filter((c) => c.orgId === KOFF.id)).map((w) => w.id);
   const stale = ctxs.filter((c) => c.stale).map((c) => c.ref).sort();
   const waitingClient = [...new Set(ctxs.filter((c) => c.waiting.party === "client").map((c) => c.order?.ref ?? c.ref))].sort();
-  const unassigned = ctxs.filter((c) => c.state === "submitted" && !c.assignedAgentId).map((c) => c.ref);
+  // same rules as the ops dashboard (src/server/ops/dashboard.ts): on-hold / cancelled rows are left out; QA-10 "unassigned" =
+  // any open line without an owner; QA-29 unassigned rows are listed under Unassigned only, never under Waiting on us
+  const dash = ctxs.filter((c) => c.exception !== "on_hold" && c.exception !== "cancelled");
+  const unassigned = dash.filter((c) => !c.assignedAgentId && !["draft", "completed", "delivered"].includes(c.state)).map((c) => c.ref);
+  const waitingUs = [...new Set(dash.filter((c) => !!c.assignedAgentId && !c.stale && c.waiting.party === "agency").map((c) => c.order?.ref ?? c.ref))].sort();
   const assert = (cond: boolean, msg: string) => { if (!cond) throw new Error(`seed consistency check failed: ${msg}`); };
   assert(piotrWaiting.length === 1 && piotrWaiting[0] === "sample_received:REQ-2026-0312-02", `AC-DASH-01 piotr waiting = ${JSON.stringify(piotrWaiting)}`);
   assert(koffWaiting.length === 2 && koffWaiting.includes("offer_sent:REQ-2026-0301-01") && koffWaiting.includes("delivery_confirm:ORD-2026-0290"), `AC-DASH-02 koff waiting = ${JSON.stringify(koffWaiting)}`);
   assert(JSON.stringify(stale) === JSON.stringify(["REQ-2026-0312-14", "REQ-2026-0312-26", "REQ-2026-0318-01"]), `AC-OPS-01 stale = ${JSON.stringify(stale)}`);
   assert(JSON.stringify(waitingClient) === JSON.stringify(["ORD-2026-0290", "REQ-2026-0301-01", "REQ-2026-0312-02"]), `AC-OPS-02 waiting on client = ${JSON.stringify(waitingClient)}`);
   assert(JSON.stringify(unassigned) === JSON.stringify(["REQ-2026-0325-01"]), `AC-OPS-03 unassigned = ${JSON.stringify(unassigned)}`);
+  assert(waitingUs.length === 9 && !waitingUs.includes("REQ-2026-0325-01"), `AC-OPS-02 waiting on us (e2e KPI tile "9") = ${JSON.stringify(waitingUs)}`);
   const l11 = ctxs.find((c) => c.ref === "REQ-2026-0312-11")!;
   assert(l11.sourcing.reached === 3 && l11.sourcing.priced === 2, `AC-LINE-05 counts = ${JSON.stringify(l11.sourcing)}`);
   const l01 = ctxs.find((c) => c.ref === "REQ-2026-0312-01")!;
@@ -683,7 +761,7 @@ export async function seed() {
     (await db.select().from(S.suppliers).where(eq(S.suppliers.ref, "SUP-0017"))).length,
     (await db.select().from(S.supplierContacts).where(eq(S.supplierContacts.handle, "zzleaktest_wx"))).length,
     (await db.select().from(S.supplierParticipations).where(eq(S.supplierParticipations.supplierId, SUP("SUP-0017")))).length,
-    (await db.select().from(A.documents).where(eq(A.documents.filename, "ZZLEAKTEST-quote.xlsx"))).length,
+    (await db.select().from(A.documents).where(eq(A.documents.filename, "quote-2026-09-12-copy.xlsx"))).length,
     (await db.select().from(A.comments).where(sql`${A.comments.body} ilike ${needle}`)).length,
     (await db.select().from(A.activityEvents).where(sql`${A.activityEvents.payload}::text ilike ${needle}`)).length,
     (await db.select().from(S.supplierPriceLists).where(eq(S.supplierPriceLists.supplierId, SUP("SUP-0017")))).length,

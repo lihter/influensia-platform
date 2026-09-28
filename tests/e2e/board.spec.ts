@@ -33,7 +33,11 @@ test.describe.serial("ops line page", () => {
     await expect(strip).toContainText("2 stale");
     await expect(page.locator("[data-supplier='SUP-0017']")).toContainText("ZZLEAKTEST"); // canary present on ops (SPEC 5.4 step 5)
     await expect(page.locator("[data-supplier='SUP-0007'] [data-testid=usd-cell]")).toContainText("$0.0539");
-    await expect(page.locator("[data-supplier='SUP-0013'] [data-testid=last-cell]")).toContainText("15 d");
+    // Fuli was last contacted 2026-09-13 (seed); the cell is calendar days to the server's wall clock — 15 d on the
+    // seed day (28 Sep), so derive it from today instead of breaking when a run crosses midnight (server TZ = this TZ)
+    const t = new Date();
+    const fuliDays = Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime() - new Date(2026, 8, 13).getTime()) / 86_400_000);
+    await expect(page.locator("[data-supplier='SUP-0013'] [data-testid=last-cell]")).toHaveText(new RegExp(`^${fuliDays} d`));
   });
 
   test("AC-BOARD-03: log a quote for Boyuan → quoted, USD/unit 0.0460, 7 of 8, 1 stale", async ({ page }) => {
@@ -72,15 +76,17 @@ test.describe.serial("ops line page", () => {
   test("AC-OFB-02/03/04: build an offer on line 03, leak-check block, then send", async ({ page }) => {
     await login(page, "bogdan@influensia.ro");
     await page.goto("/ops/lines/REQ-2026-0312-03?tab=offer");
-    const suti = page.locator("[data-testid=source-check][data-supplier='SUP-0008']");
-    if (!(await suti.isChecked())) await suti.check();
-    await expect(page.getByTestId("option-card")).toHaveCount(2);
+    // QA-27: Suti (SUP-0008) is dropped on line 03 → not an option source; Yuantuo (negotiating) is preselected as A
+    await expect(page.locator("[data-testid=source-check][data-supplier='SUP-0008']")).toHaveCount(0);
+    await expect(page.locator("[data-testid=source-check][data-supplier='SUP-0007']")).toBeChecked();
+    await expect(page.getByTestId("option-card")).toHaveCount(1);
     await expect(page.locator("[data-testid=option-card][data-label=A] [data-testid=ladder-price]").first()).toHaveValue(/0\.0598/);
-    await page.locator("[data-testid=option-card][data-label=A] [data-testid=deviations]").fill("none");
-    await page.locator("[data-testid=option-card][data-label=B] [data-testid=deviations]").fill("Quoted by Yiwu Suti Crafts");
+    await page.locator("[data-testid=option-card][data-label=A] [data-testid=sample-cost]").fill("45.00"); // QA-22: required when a sample is required
+    // leak check still knows the dropped supplier's name
+    await page.locator("[data-testid=option-card][data-label=A] [data-testid=deviations]").fill("Quoted by Yiwu Suti Crafts");
     await page.getByTestId("send-offer").click();
     await expect(page.getByTestId("offer-error")).toContainText(/Leak check.*Suti/);
-    await page.locator("[data-testid=option-card][data-label=B] [data-testid=deviations]").fill("80/100 µm film, verify on sample");
+    await page.locator("[data-testid=option-card][data-label=A] [data-testid=deviations]").fill("none");
     await page.getByTestId("send-offer").click();
     await expect(page.locator("[data-testid=sent-offers] [data-status=sent]")).toHaveCount(1);
     await page.goto("/ops/lines/REQ-2026-0312-03?tab=timeline");
@@ -97,6 +103,7 @@ test.describe.serial("ops line page", () => {
     await page.getByTestId("composer-body").fill("Production photos from the line");
     await page.getByTestId("composer-post").click();
     await expect(page.getByTestId("timeline")).toContainText("Production photos from the line");
+    await page.getByRole("button", { name: /Show all \d+ updates/ }).click(); // FIX-C: the feed shows the latest 15 first
     await expect(page.getByTestId("timeline")).toContainText("Daryl (Yuantuo)"); // AC-TL-01 WhatsApp log present
     await expect(page.getByTestId("timeline")).toContainText("Suti registered 2026-03");
   });
@@ -109,7 +116,7 @@ test.describe.serial("client pages", () => {
     await expect(page.locator("[data-testid=stepper] li[aria-current=step]")).toContainText("In production");
     await expect(page.getByTestId("facts-strip")).toContainText("100,000");
     await expect(page.getByTestId("facts-strip")).toContainText("$0.062");
-    await expect(page.getByTestId("facts-strip")).toContainText("+ fee");
+    await expect(page.getByTestId("facts-strip")).toContainText("fee per order"); // FIX-B: "per pc + $540.00 fee per order"
     await expect(page.getByTestId("facts-strip")).toContainText("18 Nov 2026");
     await expect(page.getByTestId("order-card")).toHaveAttribute("href", "/app/orders/ORD-2026-0312");
     await page.getByTestId("tab-documents").click();
@@ -130,7 +137,7 @@ test.describe.serial("client pages", () => {
 
   test("AC-LINE-07: Ask about this order → appears in Updates", async ({ page }) => {
     await login(page, "piotr@example.pl");
-    await page.goto("/app/lines/REQ-2026-0312-01?tab=ask");
+    await page.goto("/app/lines/REQ-2026-0312-01#ask"); // FIX-B: Ask is the composer under Updates
     await page.getByTestId("ask-text").fill("Can you share production photos?");
     await page.getByTestId("ask-send").click();
     await expect(page.getByTestId("ask-form")).toContainText("Sent");
@@ -141,13 +148,13 @@ test.describe.serial("client pages", () => {
   test("AC-OFFER-04/02: fresh offer on line 03 — ask for changes; KOFF accepts gloves offer", async ({ page }) => {
     await login(page, "piotr@example.pl");
     await page.goto("/app/offers/OFR-2026-0312-03-v1");
-    await expect(page.getByTestId("option-card")).toHaveCount(2);
+    await expect(page.getByTestId("option-card")).toHaveCount(1); // one source since QA-27 (dropped Suti is not offerable)
     expect(await page.content()).not.toMatch(/Yuantuo|Suti/);
     await page.getByTestId("ask-changes").click();
     await page.getByTestId("changes-text").fill("Need 120 µm");
     await page.getByTestId("changes-send").click();
     await page.waitForURL(/\/app\/lines\/REQ-2026-0312-03/);
-    await expect(page.getByTestId("client-line")).toContainText("Change requested");
+    await expect(page.getByTestId("client-line")).toContainText(/Change requested|New price coming/); // FIX-B: one status chip (exception or outcome-aware milestone)
     await page.goto("/logout");
     await login(page, "buyer@koff.example");
     await page.goto("/app/offers/OFR-2026-0301-01-v1");
@@ -168,8 +175,8 @@ test.describe.serial("client pages", () => {
     await page.getByTestId("approve").click();
     await page.getByTestId("approve-confirm").click();
     await page.waitForURL(/\/app\/lines\/REQ-2026-0312-02/);
-    await expect(page.getByTestId("milestone-suffix")).toContainText("Order confirmed");
-    await expect(page.getByTestId("sub-label")).toContainText("Preparing your order confirmation");
+    await expect(page.getByTestId("milestone-suffix")).toContainText(/Order (confirmed|being prepared)/); // QA-12 truthful label
+    await expect(page.getByTestId("now-next")).toContainText("preparing your order confirmation"); // FIX-B: Now → Next strip
   });
 });
 

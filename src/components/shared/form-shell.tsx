@@ -35,8 +35,21 @@ export function FormShell({ trigger, eyebrow, title, description, children, subm
   const [busy, setBusy] = React.useState(false);
   const isPending = pending ?? busy;
 
+  const [missing, setMissing] = React.useState<string[]>([]);
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // QA-16: never a silent submit — list the fields that block it, mark them, focus the first
+    const form = e.currentTarget;
+    const bad = [...form.elements].filter((el): el is HTMLInputElement => "checkValidity" in el && typeof (el as HTMLInputElement).checkValidity === "function" && !(el as HTMLInputElement).checkValidity() && (el as HTMLInputElement).type !== "hidden");
+    if (bad.length) {
+      const name = (el: HTMLInputElement) => (el.id && form.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.textContent?.trim()) || el.getAttribute("aria-label") || el.name || "a field";
+      setMissing([...new Set(bad.map(name))]);
+      bad.forEach((el) => el.setAttribute("aria-invalid", "true"));
+      bad[0].focus();
+      return;
+    }
+    setMissing([]);
+    form.querySelectorAll("[aria-invalid=true]").forEach((el) => el.removeAttribute("aria-invalid"));
     if (!onSubmit) return;
     setBusy(true);
     try {
@@ -51,13 +64,14 @@ export function FormShell({ trigger, eyebrow, title, description, children, subm
     <Sheet open={isOpen} onOpenChange={setOpen}>
       {trigger && <SheetTrigger asChild>{trigger}</SheetTrigger>}
       <SheetContent side="right" className={cn("gap-0 p-0", wide && "sm:max-w-[40rem]", className)}>
-        <form onSubmit={submit} className="flex h-full flex-col">
+        <form onSubmit={submit} noValidate className="flex h-full flex-col">
           <SheetHeader className="border-b border-border px-6 py-5 text-left">
             {eyebrow && <Eyebrow className="mb-1">{eyebrow}</Eyebrow>}
             <SheetTitle className="text-lg font-semibold">{title}</SheetTitle>
             {description ? <SheetDescription className="text-sm text-ink-2">{description}</SheetDescription> : <SheetDescription className="sr-only">{title}</SheetDescription>}
           </SheetHeader>
           <div className="flex-1 overflow-y-auto px-6 py-5">
+            {missing.length > 0 && <p role="alert" className="mb-4 rounded-lg border border-danger-border bg-danger-wash px-3 py-2 text-sm text-danger" data-testid="form-missing">Fill in {missing.join(", ")} to continue.</p>}
             <div className="flex flex-col gap-5">{children}</div>
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-border bg-card p-4">

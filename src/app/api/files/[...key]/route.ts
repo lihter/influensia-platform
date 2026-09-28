@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorize } from "@/server/shared/authorize";
 import { getStorage, assertValidKey } from "@/server/shared/storage";
-import { canReadKey, agencyOrgId } from "@/server/shared/files";
+import { canReadKey, agencyOrgId, downloadNameFor } from "@/server/shared/files";
 import { getDbHandle } from "@/server/shared/db-handle";
 import { route } from "@/server/shared/http";
 
@@ -21,7 +21,8 @@ export const GET = route(async (req: Request, { params }: { params: Promise<{ ke
   const obj = await getStorage().get(key);
   if (!obj) return new NextResponse("not found", { status: 404 });
   const url = new URL(req.url);
-  const filename = url.searchParams.get("filename") ?? key.split("/").pop()!;
+  // QA-46: the download name comes from the database record, never from the (spoofable) `filename` query
+  const filename = await downloadNameFor(await getDbHandle(), key, ctx);
   const disposition = url.searchParams.get("dl") ? "attachment" : "inline";
   return new NextResponse(obj.body as ReadableStream, {
     headers: {

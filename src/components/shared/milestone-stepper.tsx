@@ -16,6 +16,10 @@ export type StepperProps = {
   state?: LineState;
   /** "summary" forces the phone layout at every width (dashboard rows) */
   variant?: "full" | "summary";
+  /** client: date under each desktop step — actual for done steps, `expected` (faint, "~3 Oct") for upcoming ones */
+  dates?: Partial<Record<Milestone, { text: string; expected?: boolean }>>;
+  /** truthful label for the current step (DTO `milestoneLabel`, QA-12) */
+  label?: string;
   className?: string;
 };
 
@@ -27,8 +31,8 @@ export function MilestoneBar({ milestone, sampleSkipped, className }: { mileston
     <ol className={cn("grid grid-cols-9 gap-1", className)} aria-label={t("stepLabel", { step: cur + 1, name: t(milestone) })}>
       {MILESTONES.map((m, i) => (
         <li key={m} aria-current={i === cur ? "step" : undefined} className="relative">
-          {ACTION_MILESTONES.includes(m) && <Triangle className={cn("absolute -top-2.5 left-1/2 size-1.5 -translate-x-1/2", i <= cur ? "fill-green-600 text-green-600" : "text-faint")} aria-hidden />}
-          <div className={cn("h-1 rounded-full transition-colors duration-[120ms]", i < cur ? "bg-foreground" : i === cur ? "bg-green-600" : "bg-border", m === "sample" && sampleSkipped && "bg-hairline-strong")} />
+          {ACTION_MILESTONES.includes(m) && <Triangle className={cn("absolute -top-2.5 left-1/2 size-1.5 -translate-x-1/2", i < cur ? "fill-foreground text-foreground" : i === cur ? "fill-green-600 text-green-600" : "text-faint")} aria-hidden />}
+          <div className={cn("h-1.5 rounded-full transition-colors duration-[120ms]", i < cur ? "bg-foreground" : i === cur ? "bg-green-600" : "bg-border", m === "sample" && sampleSkipped && "bg-hairline-strong")} />
           <span className="sr-only">{t(m)}</span>
         </li>
       ))}
@@ -40,14 +44,14 @@ export function MilestoneBar({ milestone, sampleSkipped, className }: { mileston
  * DESIGN §5.1 — nine steps; done / current / todo / blocked; ▲ markers on action milestones.
  * Desktop: horizontal <ol> with aria-current="step". Phone (<768px) or variant="summary": "Step 7 of 9 · Quality check" + 9-segment bar.
  */
-export function MilestoneStepper({ milestone, subLabel, waitingOnClient, sampleSkipped, state, variant = "full", className }: StepperProps) {
+export function MilestoneStepper({ milestone, subLabel, waitingOnClient, sampleSkipped, state, variant = "full", className, dates, label }: StepperProps) {
   const t = useTranslations("milestone");
   const cur = milestoneIndex(milestone);
   const summary = (
     <div className={cn("flex flex-col gap-2", variant === "full" && "md:hidden")} data-testid="stepper-summary">
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span className="font-medium text-foreground">
-          <span className="font-mono">{t("stepShort", { step: cur + 1 })}</span> · {t(milestone)}
+          <span className="font-mono">{t("stepShort", { step: cur + 1 })}</span> · {label ?? t(milestone)}
         </span>
         {waitingOnClient && <span className="inline-flex items-center gap-1 text-2xs font-semibold text-green-700"><Triangle className="size-2 fill-current" />{t("yourAction")}</span>}
       </div>
@@ -83,8 +87,9 @@ export function MilestoneStepper({ milestone, subLabel, waitingOnClient, sampleS
                 )}
               </div>
               <div className={cn("mt-2 px-1 text-xs leading-4", done ? "text-ink-2" : current ? "font-semibold text-foreground" : "text-muted-foreground", skipped && "line-through")}>
-                {t(m)}
+                {current && label ? label : t(m)}
               </div>
+              {dates?.[m] && <div className={cn("mt-0.5 font-mono text-2xs leading-4", dates[m]!.expected ? "text-faint" : "text-muted-foreground")} data-testid="step-date">{dates[m]!.text}</div>}
               {current && subLabel && <div className="mt-0.5 max-w-[12rem] px-1 text-2xs leading-4 text-ink-2">{subLabel}</div>}
               {blocked && <div className="mt-0.5 text-2xs font-semibold text-green-700">{t("yourAction")}</div>}
               {current && state && <div className="mt-0.5 font-mono text-2xs text-muted-foreground">{state}</div>}

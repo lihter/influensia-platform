@@ -51,8 +51,9 @@ function toRow(lc: LineContext): OpsRow {
     orgName: lc.orgName,
     state: lc.state,
     exception: lc.exception,
-    lastChangeAt: lc.lastStateChangeAt.toISOString(),
-    daysSinceChange: daysBetween(lc.lastStateChangeAt),
+    // QA-29: a needs_input row is "since" the question, not the last state change
+    lastChangeAt: (lc.exception === "needs_input" && lc.openQuestionAt ? lc.openQuestionAt : lc.lastStateChangeAt).toISOString(),
+    daysSinceChange: daysBetween(lc.exception === "needs_input" && lc.openQuestionAt ? lc.openQuestionAt : lc.lastStateChangeAt),
     agentName: lc.agentName,
     agentId: lc.assignedAgentId,
     reason: lc.waiting.reason,
@@ -63,6 +64,9 @@ function toRow(lc: LineContext): OpsRow {
     submittedAt: lc.createdAt.toISOString(),
   };
 }
+
+/** QA-10: any open line without an owner — not only `submitted` (range/catalog lines start further along). */
+export const isUnassigned = (r: { agentId: string | null; state: LineState; kind?: "line" | "order" }) => !r.agentId && r.state !== "draft" && r.state !== "completed" && r.state !== "delivered";
 
 export async function getOpsDashboard(ctx: Ctx, opts?: { mine?: boolean }): Promise<OpsDashboard> {
   if (!isOps(ctx)) throw new Forbidden("ops only");
@@ -76,12 +80,12 @@ export async function getOpsDashboard(ctx: Ctx, opts?: { mine?: boolean }): Prom
     if (seen.has(r.key)) continue;
     seen.add(r.key);
     if (opts?.mine && r.agentId && r.agentId !== ctx.userId) continue;
-    if (opts?.mine && !r.agentId && r.state !== "submitted") continue;
+    // unassigned rows stay visible to everyone (they are listed under Unassigned only, QA-10/QA-29)
     rows.push(r);
   }
   const stale = rows.filter((r) => r.stale).sort((a, b) => a.lastChangeAt.localeCompare(b.lastChangeAt));
-  const waitingUs = rows.filter((r) => !r.stale && lcs.find((l) => l.id === r.lineId)?.waiting.party === "agency").sort((a, b) => a.lastChangeAt.localeCompare(b.lastChangeAt));
+  const waitingUs = rows.filter((r) => !!r.agentId && !r.stale && lcs.find((l) => l.id === r.lineId)?.waiting.party === "agency").sort((a, b) => a.lastChangeAt.localeCompare(b.lastChangeAt));
   const waitingClient = rows.filter((r) => lcs.find((l) => l.id === r.lineId)?.waiting.party === "client").sort((a, b) => a.lastChangeAt.localeCompare(b.lastChangeAt));
-  const unassigned = rows.filter((r) => r.state === "submitted" && !r.agentId);
+  const unassigned = rows.filter((r) => isUnassigned(r));
   return { stale, waitingUs, waitingClient, unassigned, counts: { stale: stale.length, waitingUs: waitingUs.length, waitingClient: waitingClient.length, unassigned: unassigned.length } };
 }

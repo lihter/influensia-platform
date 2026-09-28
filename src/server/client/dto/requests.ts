@@ -26,6 +26,9 @@ export const ClientListRowDto = z.object({
   milestone: MilestoneDto,
   milestoneStep: z.number().int().min(1).max(9),
   subLabel: z.string(),
+  /** QA-12 truthful chip label; QA-11 offer outcome while we owe a new price */
+  milestoneLabel: z.string(),
+  offerOutcome: z.enum(["changes_requested", "declined", "expired"]).nullable(),
   exception: ExceptionDto,
   exceptionText: z.string().nullable(),
   waitingReason: WaitingReasonDto.nullable(),
@@ -35,6 +38,7 @@ export const ClientListRowDto = z.object({
   isDraft: z.boolean(),
   isClosed: z.boolean(),           // cancelled → "Closed" sub-heading of Delivered
   updatedAt: isoDateTime,
+  lastChangeAt: isoDateTime,
 }).strict();
 export type ClientListRowDto = z.infer<typeof ClientListRowDto>;
 

@@ -5,6 +5,7 @@ import { requireClientPage } from "@/server/shared/authorize";
 import { listClientRequests } from "@/server/client/requests";
 import { ClientListTabDto } from "@/server/client/dto/requests";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageBand } from "@/components/shared/section-band";
 import { Button } from "@/components/ui/button";
 import { RequestsList } from "@/components/app/requests/requests-list";
 
@@ -20,12 +21,13 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
+        band
         eyebrow={dto.companyLabel || t("eyebrow")}
         title={t("title")}
-        titleSuffix={<span>{dto.counts.active} active</span>}
+        meta={<span>{dto.counts.active} in progress{dto.counts.waiting ? <> · <span className="font-medium text-green-700">{dto.counts.waiting} waiting on you</span></> : null}</span>}
         actions={<Button asChild size="lg" className="w-full md:hidden"><Link href="/app/requests/new"><Plus data-icon="inline-start" />{tn("newRequest")}</Link></Button>}
       />
-      <RequestsList dto={dto} tab={tab} />
+      <PageBand tone="page" pad="lg"><RequestsList dto={dto} tab={tab} /></PageBand>
     </>
   );
 }

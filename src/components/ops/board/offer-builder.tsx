@@ -1,7 +1,6 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
 import { Lock, Trash2, Eye } from "lucide-react";
 import type { OpsLine, OpsParticipation } from "@/server/ops/participations";
 import type { SamplePaidBy } from "@/db/enums";
@@ -16,6 +15,9 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { OfferStatusChip, UtilityBadge, VisibilityBadge } from "@/components/shared/chips";
 import { Eyebrow } from "@/components/shared/eyebrow";
 import { cn } from "@/lib/utils";
+import { label } from "@/lib/labels";
+import { NativeSelect } from "@/components/ui/native-select";
+import { DateInput } from "@/components/ui/date-input";
 import { saveOfferAction } from "@/app/(ops)/ops/lines/[ref]/actions";
 import { S } from "./strings";
 import { useAction } from "./use-action";
@@ -44,19 +46,22 @@ const Field = ({ label, children, className, error }: { label: React.ReactNode; 
 /** SPEC F-18 — source quotes → options A/B/C, ladder editor, fee (pricing display aware), preview as client, send with leak check. */
 export function OfferBuilder({ line, preselect, isAdmin }: { line: OpsLine; preselect: string[]; isAdmin: boolean }) {
   const { run, pending, errors } = useAction();
-  const to = useTranslations("offer_status");
   const draft = line.offers.find((o) => o.status === "draft") ?? null;
-  const quoted = line.participations.filter((p) => p.latestQuote);
+  // QA-27: dropped / cannot-make suppliers are not option sources
+  const quoted = line.participations.filter((p) => p.latestQuote && p.status !== "dropped" && p.status !== "cannot_make");
+  // QA-47: a new version starts from the previous one (after a change request / decline)
+  const prev = draft ?? line.offers.find((o) => o.status !== "draft" && o.status !== "accepted") ?? null;
   const initial = (): Opt[] => {
-    if (draft) return draft.options.map((o) => ({ participationId: o.participationId ?? "", moq: o.moq ? String(o.moq) : "", lead: o.leadDays ? String(o.leadDays) : "", rows: o.priceBreaks.map((b) => ({ qty: String(b.min_qty), price: e2ToText(b.unit_price_minor_e2) })), fee: minorToText(o.feeMinor), factoryE2: o.factoryPriceMinorE2, deviations: o.deviationsPlain ?? "", sampleCost: o.sampleCostMinor ? minorToText(o.sampleCostMinor) : "", samplePaidBy: o.samplePaidBy ?? "", sampleRequired: o.sampleRequired, terms: o.paymentTermsClient ?? DEFAULT_TERMS, internalNote: o.internalNote ?? "" }));
+    if (prev) return prev.options.filter((o) => !o.participationId || quoted.some((p) => p.id === o.participationId)).map((o) => ({ participationId: o.participationId ?? "", moq: o.moq ? String(o.moq) : "", lead: o.leadDays ? String(o.leadDays) : "", rows: o.priceBreaks.map((b) => ({ qty: String(b.min_qty), price: e2ToText(b.unit_price_minor_e2) })), fee: minorToText(o.feeMinor), factoryE2: o.factoryPriceMinorE2, deviations: o.deviationsPlain ?? "", sampleCost: o.sampleCostMinor ? minorToText(o.sampleCostMinor) : "", samplePaidBy: o.samplePaidBy ?? "", sampleRequired: o.sampleRequired, terms: o.paymentTermsClient ?? DEFAULT_TERMS, internalNote: o.internalNote ?? "" }));
     const pre = quoted.filter((p) => preselect.includes(p.id) || (!preselect.length && (p.status === "selected" || p.status === "shortlisted" || p.status === "negotiating"))).slice(0, 3);
     return pre.map((p) => fromQuote(p, line));
   };
   const [opts, setOpts] = React.useState<Opt[]>(initial);
-  const [incoterm, setIncoterm] = React.useState(draft?.incoterm ?? "FOB");
-  const [port, setPort] = React.useState(draft?.port ?? quoted.find((p) => preselect.includes(p.id))?.latestQuote?.port ?? quoted[0]?.latestQuote?.port ?? "");
+  const [incoterm, setIncoterm] = React.useState(prev?.incoterm ?? "FOB");
+  // QA-06: prefill a real loading port (server-derived), never the factory's inland city from the quote
+  const [port, setPort] = React.useState(prev?.port ?? quoted.find((p) => preselect.includes(p.id))?.loadingPort ?? line.offerDefaults.port ?? "");
   const [valid, setValid] = React.useState(draft?.validUntil ?? validDefault());
-  const [note, setNote] = React.useState(draft?.noteToClient ?? "");
+  const [note, setNote] = React.useState(prev?.noteToClient ?? "");
   const [preview, setPreview] = React.useState(false);
   const plusFee = line.org.pricingDisplay === "factory_plus_fee";
   const checked = new Set(opts.map((o) => o.participationId));
@@ -69,7 +74,8 @@ export function OfferBuilder({ line, preselect, isAdmin }: { line: OpsLine; pres
   const sent = line.offers.filter((o) => o.status !== "draft");
   const accepted = sent.find((o) => o.status === "accepted");
   const refPrice = line.product?.referencePriceMinorE2;
-  const canSend = ["quotes_in", "shortlisted", "negotiating", "offer_ready"].includes(line.state) && !sent.some((o) => o.status === "sent");
+  const blockedReason = line.sendOfferBlockedReason;
+  const canSend = !blockedReason;
 
   return (
     <div className="flex flex-col gap-6" data-testid="offer-builder">
@@ -132,10 +138,10 @@ export function OfferBuilder({ line, preselect, isAdmin }: { line: OpsLine; pres
                     {plusFee ? <Field label={S.offer.fee} error={errors[`${k}.feeMinor`]}><Input value={o.fee} onChange={(e) => setOpt(i, { fee: e.target.value })} inputMode="decimal" className="text-right font-mono" data-testid="fee" /></Field> : <div className="text-xs text-muted-foreground self-end pb-2">{S.offer.feeHidden}</div>}
                     <Field label={<span className="inline-flex items-center gap-1"><Lock className="size-3" />{S.offer.factory}</span>}><div className="h-9 rounded-lg bg-section-alt px-3 py-2 text-right font-mono text-sm">{o.factoryE2 !== null ? formatUnitPrice({ minorE2: o.factoryE2, currency: "USD" }, { decimals: 4 }) : "—"}</div></Field>
                   </div>
-                  <Field label={S.offer.deviations} className="mt-3" error={errors[`${k}.deviationsPlain`]}><Textarea rows={2} value={o.deviations} onChange={(e) => setOpt(i, { deviations: e.target.value })} placeholder="none at spec thickness" data-testid="deviations" /></Field>
+                  <Field label={S.offer.deviations} className="mt-3" error={errors[`${k}.deviationsPlain`]}><Textarea rows={2} value={o.deviations} onChange={(e) => setOpt(i, { deviations: e.target.value })} placeholder="e.g. none at spec thickness" data-testid="deviations" /></Field>
                   <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    <Field label={S.offer.sampleCost}><Input value={o.sampleCost} onChange={(e) => setOpt(i, { sampleCost: e.target.value })} inputMode="decimal" className="text-right font-mono" placeholder="45.00" /></Field>
-                    <Field label={S.offer.samplePaidBy}><select value={o.samplePaidBy} onChange={(e) => setOpt(i, { samplePaidBy: e.target.value as SamplePaidBy | "" })} className="h-9 rounded-lg border border-input bg-card px-3 text-sm"><option value="">—</option>{SAMPLE_PAID_BY.map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
+                    <Field label={S.offer.sampleCost} error={errors[`${k}.sampleCostMinor`]}><Input value={o.sampleCost} onChange={(e) => setOpt(i, { sampleCost: e.target.value })} inputMode="decimal" className="text-right font-mono" placeholder="e.g. 45.00" data-testid="sample-cost" /></Field>
+                    <Field label={S.offer.samplePaidBy} error={errors[`${k}.samplePaidBy`]}><NativeSelect wrapperClassName="w-full" value={o.samplePaidBy} onChange={(e) => setOpt(i, { samplePaidBy: e.target.value as SamplePaidBy | "" })}><option value="">Choose…</option>{SAMPLE_PAID_BY.map((s) => <option key={s} value={s}>{label("samplePaidBy", s)}</option>)}</NativeSelect></Field>
                     <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" className="accent-green-600" checked={o.sampleRequired} onChange={(e) => setOpt(i, { sampleRequired: e.target.checked })} data-testid="sample-required" />{S.offer.sampleRequired}</label>
                   </div>
                   <Field label={S.offer.terms} className="mt-3"><Input value={o.terms} onChange={(e) => setOpt(i, { terms: e.target.value })} /></Field>
@@ -148,16 +154,17 @@ export function OfferBuilder({ line, preselect, isAdmin }: { line: OpsLine; pres
           {opts.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="grid gap-3 sm:grid-cols-3">
-                <Field label={S.offer.incoterm} error={errors.incoterm}><select value={incoterm} onChange={(e) => setIncoterm(e.target.value)} className="h-9 rounded-lg border border-input bg-card px-3 text-sm" data-testid="offer-incoterm">{INCOTERMS.filter((i) => isAdmin || i === "FOB").map((i) => <option key={i}>{i}</option>)}</select></Field>
-                <Field label={S.offer.port}><Input value={port} onChange={(e) => setPort(e.target.value)} data-testid="offer-port" /></Field>
-                <Field label={S.offer.valid} error={errors.validUntil}><Input type="date" value={valid} onChange={(e) => setValid(e.target.value)} className="font-mono" data-testid="offer-valid" /></Field>
+                <Field label={S.offer.incoterm} error={errors.incoterm}><NativeSelect wrapperClassName="w-full" value={incoterm} onChange={(e) => setIncoterm(e.target.value)} data-testid="offer-incoterm">{INCOTERMS.filter((i) => isAdmin || i === "FOB").map((i) => <option key={i}>{i}</option>)}</NativeSelect></Field>
+                <Field label={S.offer.port} error={errors.port ?? errors.Port}><Input value={port} onChange={(e) => setPort(e.target.value)} list="offer-port-list" data-testid="offer-port" /><datalist id="offer-port-list">{line.offerDefaults.ports.map((p) => <option key={p} value={p} />)}</datalist></Field>
+                <Field label={S.offer.valid} error={errors.validUntil}><DateInput value={valid} onChange={(e) => setValid(e.target.value)} data-testid="offer-valid" /></Field>
                 <Field label={S.offer.note} className="sm:col-span-3"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
               </div>
               {errors._ && <p className="mt-2 text-xs text-danger" data-testid="offer-error">{errors._}</p>}
               <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setPreview(true)} data-testid="preview-client"><Eye data-icon="inline-start" />{S.offer.preview}</Button>
                 <Button type="button" variant="outline" disabled={pending} onClick={() => run(() => saveOfferAction(payload(), false), { success: (d) => `Draft ${d.offerRef} saved` })} data-testid="save-draft">{S.offer.saveDraft}</Button>
-                <Button type="button" disabled={pending || !canSend} onClick={() => run(() => saveOfferAction(payload(), true), { success: (d) => `${d.offerRef} sent` })} data-testid="send-offer">{S.offer.send}{draft ? ` (v${draft.version})` : ""}</Button>
+                {blockedReason && <p className="mr-auto text-xs text-muted-foreground" data-testid="send-offer-blocked">{blockedReason}</p>}
+                <Button type="button" disabled={pending || !canSend} title={blockedReason ?? undefined} onClick={() => run(() => saveOfferAction(payload(), true), { success: (d) => `${d.offerRef} sent` })} data-testid="send-offer">{S.offer.send}{draft ? ` (v${draft.version})` : ""}</Button>
               </div>
             </div>
           )}
@@ -182,7 +189,7 @@ export function OfferBuilder({ line, preselect, isAdmin }: { line: OpsLine; pres
                     {o.status === "declined" && <span className="text-danger">{S.offer.declined(formatDate(o.decidedAt))}{o.declineReason ? ` · ${o.declineReason.replace(/_/g, " ")}` : ""}</span>}
                     {o.status === "changes_requested" && <span className="text-warning">{S.offer.changes(formatDate(o.decidedAt))}</span>}
                     {o.status === "expired" && <span className="text-muted-foreground">{S.offer.expired}</span>}
-                    {o.status === "sent" && <span className="text-muted-foreground">{to("sent")}</span>}
+                    {o.status === "sent" && <span className="text-muted-foreground">Waiting for the client</span>}
                   </span>
                 </div>
                 {o.changesText && <p className="mt-1 text-xs text-ink-2">“{o.changesText}”</p>}

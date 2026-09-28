@@ -8,7 +8,10 @@ import type { RangeDetail, RangeItem, RangeLeakReport } from "@/server/ops/range
 import type { ActionResult } from "@/server/shared/http";
 import type { RangeItemFormInput } from "@/app/(ops)/ops/factory-ranges/actions";
 import type { LineState } from "@/db/enums";
-import { PageHeader } from "@/components/shared/page-header";
+import { PageHeader, EyebrowLink } from "@/components/shared/page-header";
+import { label } from "@/lib/labels";
+import { UNITS } from "@/db/enums";
+import { NativeSelect } from "@/components/ui/native-select";
 import { FactoryLabel } from "@/components/shared/factory-label";
 import { FormShell } from "@/components/shared/form-shell";
 import { StateChip, VisibilityBadge } from "@/components/shared/chips";
@@ -74,7 +77,8 @@ export function RangePage({ r, isAdmin, products, actions }: { r: RangeDetail; i
     <>
       <PageHeader
         sticky
-        eyebrow={<>{r.ref} · {r.supplierRef} · shown to {r.orgName}</>}
+        crumbs={[{ href: "/ops/factory-ranges", label: "Factory ranges" }, { label: <span className="font-mono">{r.ref}</span> }]}
+        eyebrow={<>{r.ref} · <EyebrowLink href={`/ops/suppliers/${r.supplierRef}`}>{r.supplierRef}</EyebrowLink> · shown to {r.orgName}</>}
         title={<span className="inline-flex flex-wrap items-center gap-3">{r.supplierName}{r.label && <FactoryLabel label={r.label} disclosed={false} />}</span>}
         meta={<><RangeStatus r={{ publishedAt: r.publishedAt, leakOk: r.leakCheckResult ? r.leakCheckResult.ok : null }} />{r.publishedAt && <span className="text-xs text-muted-foreground">published <DateTime value={r.publishedAt} />{r.approvedByName && <> by {r.approvedByName}</>}</span>}<span className="font-mono text-xs text-muted-foreground">{r.items.length} items</span>{r.supplierCity && <span className="text-xs text-muted-foreground">{r.supplierCity}</span>}</>}
         actions={
@@ -87,8 +91,8 @@ export function RangePage({ r, isAdmin, products, actions }: { r: RangeDetail; i
       <ItemForm rangeId={r.id} rangeRef={r.ref} item={editing} products={products} open={itemOpen} onOpenChange={setItemOpen} onAdd={actions.addItem} onUpdate={actions.updateItem} />
       <PublishRangeDialog r={r} open={publishOpen} onOpenChange={setPublishOpen} check={actions.check} publish={actions.publish} unpublish={actions.unpublish} />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
-        <div className="flex flex-col gap-8">
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex min-w-0 flex-col gap-8 py-6 xl:pr-6">
           <section aria-labelledby="pdf-h" data-testid="range-pdf-section">
             <div className="mb-3 flex items-center justify-between gap-3 border-t border-rule-ink pt-4">
               <h2 id="pdf-h" className="flex items-center gap-3 text-lg font-semibold"><span className="inline-flex h-[22px] items-center rounded-full border border-green-200 bg-green-50 px-2.5 font-mono text-2xs font-medium text-green-700">01</span>Sanitised PDF</h2>
@@ -103,7 +107,7 @@ export function RangePage({ r, isAdmin, products, actions }: { r: RangeDetail; i
                   <VisibilityBadge visibility="internal" />
                   <Button asChild variant="ghost" size="icon-sm" aria-label="Download source"><a href={`${r.pdfSource.url}?dl=1`}><Download /></a></Button>
                 </li>
-              ) : <li className="sheet-row text-sm text-muted-foreground">No PDF yet — optional, but clients expect it.</li>}
+              ) : !r.pdfClient ? <li className="sheet-row text-sm text-muted-foreground">No PDF yet — optional, but clients expect it.</li> : null}
               {r.pdfClient && (
                 <li className="sheet-row flex items-center gap-3" data-testid="range-pdf-client">
                   <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{r.pdfClient.filename}</p><p className="text-xs text-muted-foreground">client copy · <span className="font-mono">{formatBytes(r.pdfClient.bytes)}</span></p></div>
@@ -135,8 +139,8 @@ export function RangePage({ r, isAdmin, products, actions }: { r: RangeDetail; i
                       <p className="flex items-center gap-2 text-sm font-medium">{it.name}{it.productRef && <span className="font-mono text-xs text-muted-foreground">{it.productRef}</span>}</p>
                       <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                         {it.moq != null ? <span className="font-mono">MOQ <Qty qty={it.moq} unit={it.unit} /></span> : <span className="text-faint">no MOQ</span>}
-                        {it.madeHere === true ? <Badge variant="success" className="normal-case tracking-normal">made here</Badge> : it.madeHere === false ? <Badge variant="neutral" className="normal-case tracking-normal">sourced by them</Badge> : <Badge variant="dashed">unknown</Badge>}
-                        {it.note && <span>{it.note}</span>}
+                        {it.madeHere === true ? <Badge variant="success" className="normal-case tracking-normal">{label("provenance", "made_here")}</Badge> : it.madeHere === false ? <Badge variant="neutral" className="normal-case tracking-normal">{label("provenance", "sourced_by_them")}</Badge> : <Badge variant="dashed" className="normal-case tracking-normal">{label("provenance", "unknown")}</Badge>}
+                        {it.note && !/^(sourced by (them|the factory)|made here|unknown)$/i.test(it.note.trim()) && <span>{it.note}</span>}
                       </p>
                     </div>
                     <div className="text-right">{it.priceMinorE2 != null ? <UnitPrice minorE2={it.priceMinorE2} currency={it.currency} unit={it.unit} /> : <span className="text-xs text-faint">no price</span>}</div>
@@ -159,7 +163,7 @@ export function RangePage({ r, isAdmin, products, actions }: { r: RangeDetail; i
           </section>
         </div>
 
-        <aside className="-my-6 border-l border-hairline-strong bg-section-alt px-5 py-6 xl:sticky xl:top-16 xl:self-start" data-testid="range-rail">
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" data-testid="range-rail"><div className="xl:sticky-under-header">
           <p className="eyebrow mb-3">Facts</p>
           <dl className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Supplier</dt><dd className="text-right"><Link href={`/ops/suppliers/${r.supplierRef}`} className="link">{r.supplierName}</Link></dd></div>
@@ -175,7 +179,7 @@ export function RangePage({ r, isAdmin, products, actions }: { r: RangeDetail; i
               {r.linesFromRange.map((l) => <li key={l.lineRef} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm"><Link href={`/ops/lines/${l.lineRef}?tab=sourcing`} className="min-w-0"><span className="block truncate font-medium">{l.name}</span><span className="font-mono text-xs text-muted-foreground">{l.lineRef}</span></Link><StateChip state={l.state as LineState} /></li>)}
             </ul>
           )}
-        </aside>
+        </div></aside>
       </div>
     </>
   );
@@ -204,7 +208,7 @@ function ItemForm({ rangeId, rangeRef, item, products, open, onOpenChange, onAdd
       <FieldRow label="Name" htmlFor="it-name" error={errors.name} hint="Generic product name — never a factory model code"><Input id="it-name" value={v.name} onChange={(e) => set("name", e.target.value)} autoFocus placeholder="Toploader 55pt" aria-invalid={!!errors.name} /></FieldRow>
       <div className="grid grid-cols-2 gap-4">
         <FieldRow label="MOQ" htmlFor="it-moq" error={errors.moq}><Input id="it-moq" inputMode="numeric" value={v.moq} onChange={(e) => set("moq", e.target.value.replace(/\D/g, ""))} className="text-right font-mono" /></FieldRow>
-        <FieldRow label="Unit" htmlFor="it-unit"><Input id="it-unit" value={v.unit} onChange={(e) => set("unit", e.target.value)} className="font-mono" /></FieldRow>
+        <FieldRow label="Unit" htmlFor="it-unit"><NativeSelect id="it-unit" value={v.unit} onChange={(e) => set("unit", e.target.value)}>{[...new Set([...UNITS, v.unit])].filter(Boolean).map((u) => <option key={u} value={u}>{label("unit", u)}</option>)}</NativeSelect></FieldRow>
         <FieldRow label="Indicative price" htmlFor="it-price" error={errors.price}>
           <div className="relative"><span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 font-mono text-sm text-muted-foreground">$</span><Input id="it-price" inputMode="decimal" value={v.price} onChange={(e) => set("price", e.target.value)} className="pl-6 text-right font-mono" placeholder="0.0000" aria-invalid={!!errors.price} /></div>
         </FieldRow>

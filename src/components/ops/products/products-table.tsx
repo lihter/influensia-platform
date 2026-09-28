@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { label } from "@/lib/labels";
 
 const ALL = "__all__";
 export const VISIBILITY_LABEL: Record<ProductVisibility, string> = { private: "Private", catalog: "Catalog", proposed: "Proposed" };
@@ -39,15 +40,27 @@ export function ProductsTable({ rows, owners }: { rows: ProductRow[]; owners: { 
   const clear = () => { setQ(""); setVisibility(""); setCategory(""); setOwner(""); setExpiring(false); };
 
   const columns: DataTableColumn<ProductRow>[] = [
-    { id: "ref", accessorKey: "ref", header: "Ref", meta: { sticky: true, width: "6.5rem" }, cell: ({ row }) => <span className="font-mono text-xs">{row.original.ref}</span> },
-    { id: "name", accessorKey: "name", header: "Name", cell: ({ row }) => <PrimaryCell title={row.original.name} sub={row.original.category ?? undefined} className="max-w-[40ch]" /> },
+    { id: "name", accessorKey: "name", header: "Product", meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={<>{row.original.ref}{row.original.category && <span className="font-sans"> · {label("productCategory", row.original.category)}</span>}</>} className="max-w-[40ch]" /> },
     { id: "owner", accessorKey: "ownerOrgName", header: "Owner org", cell: ({ row }) => row.original.ownerOrgName ?? <span className="text-faint">—</span> },
     { id: "visibility", accessorKey: "visibility", header: "Visibility", cell: ({ row }) => <VisibilityChip visibility={row.original.visibility} /> },
-    { id: "price", accessorKey: "referencePriceMinorE2", header: "Reference", meta: { numeric: true, strong: true }, cell: ({ row }) => (row.original.referencePriceMinorE2 != null ? <UnitPrice minorE2={row.original.referencePriceMinorE2} currency={row.original.referenceCurrency} unit={row.original.unit} /> : <span className="text-faint">—</span>) },
-    { id: "moq", accessorKey: "referenceMoq", header: "At MOQ", meta: { numeric: true }, cell: ({ row }) => (row.original.referenceMoq != null ? <Qty qty={row.original.referenceMoq} unit={row.original.unit} /> : <span className="text-faint">—</span>) },
-    { id: "incoterm", accessorFn: (r) => `${r.referenceIncoterm ?? ""} ${r.referencePort ?? ""}`, header: "Incoterm / port", cell: ({ row }) => (row.original.referenceIncoterm ? <span>{row.original.referenceIncoterm} <span className="text-ink-2">{row.original.referencePort}</span></span> : <span className="text-faint">—</span>) },
-    { id: "spec", accessorKey: "referenceSpecVersion", header: "Spec", meta: { className: "text-center" }, cell: ({ row }) => <span className="inline-flex items-center gap-1">{row.original.referenceSpecVersion != null ? <UtilityBadge kind="version">v{row.original.referenceSpecVersion}</UtilityBadge> : <span className="text-faint">—</span>}<span className="font-mono text-2xs text-muted-foreground">/{row.original.specVersions}</span></span> },
-    { id: "valid", accessorKey: "referenceValidUntil", header: "Valid until", meta: { numeric: true }, cell: ({ row }) => <ValidUntil value={row.original.referenceValidUntil} stale={row.original.priceStale} expiring={row.original.priceExpiring} /> },
+    {
+      id: "price", accessorKey: "referencePriceMinorE2", header: "Reference price", meta: { numeric: true, strong: true },
+      cell: ({ row }) => {
+        const r = row.original;
+        if (r.referencePriceMinorE2 == null) return <span className="font-sans text-xs text-muted-foreground">Not in catalog</span>;
+        return (
+          <div className="py-0.5">
+            <UnitPrice minorE2={r.referencePriceMinorE2} currency={r.referenceCurrency} unit={r.unit} />
+            <div className="flex items-center justify-end gap-1.5 font-sans text-xs text-muted-foreground">
+              {r.referenceMoq != null && <span>MOQ <Qty qty={r.referenceMoq} /></span>}
+              {r.referenceIncoterm && <span>· {r.referenceIncoterm} {r.referencePort}</span>}
+              {r.referenceValidUntil && <span>· <ValidUntil value={r.referenceValidUntil} stale={r.priceStale} expiring={r.priceExpiring} /></span>}
+            </div>
+          </div>
+        );
+      },
+    },
+    { id: "spec", accessorKey: "referenceSpecVersion", header: "Spec", cell: ({ row }) => (row.original.referenceSpecVersion != null ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><UtilityBadge kind="version">v{row.original.referenceSpecVersion}</UtilityBadge><span className="text-xs text-muted-foreground">of {row.original.specVersions}</span></span> : row.original.specVersions > 0 ? <span className="text-xs text-muted-foreground">{row.original.specVersions} {row.original.specVersions === 1 ? "version" : "versions"}</span> : <span className="text-xs text-muted-foreground">Draft</span>) },
     { id: "lines", accessorKey: "linesCount", header: "Lines", meta: { numeric: true } },
     { id: "orders", accessorKey: "ordersCount", header: "Orders", meta: { numeric: true } },
     { id: "published", accessorKey: "publishedAt", header: "Published", meta: { numeric: true }, cell: ({ row }) => (row.original.publishedAt ? <DateTime value={row.original.publishedAt} variant="short" /> : <span className="text-faint">—</span>) },
@@ -76,7 +89,7 @@ export function ProductsTable({ rows, owners }: { rows: ProductRow[]; owners: { 
         <span className="ml-auto font-mono text-xs text-muted-foreground" data-testid="products-count">{data.length} of {rows.length}</span>
         {(q || visibility || category || owner || expiring) && <Button type="button" size="sm" variant="ghost" onClick={clear}>Clear</Button>}
       </div>
-      <DataTable columns={columns} data={data} rowHref={(r) => `/ops/products/${r.ref}`} initialSorting={[{ id: "ref", desc: false }]} className="rounded-t-none" maxHeight="calc(100vh - 16rem)" data-testid="products-table"
+      <DataTable columns={columns} data={data} rowHref={(r) => `/ops/products/${r.ref}`} initialSorting={[{ id: "name", desc: false }]} className="rounded-t-none" maxHeight="calc(100vh - 16rem)" data-testid="products-table"
         emptyState={<EmptyState title="No products match these filters" action={<Button variant="outline" onClick={clear}>Clear filters</Button>} className="py-8" />} />
     </div>
   );

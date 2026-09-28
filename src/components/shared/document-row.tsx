@@ -22,7 +22,7 @@ export function formatBytes(bytes: number) {
  * DESIGN §5.11 — sheet-list row for a document. Client rows show Download only; ops rows get `actions` (Publish etc.).
  */
 export function DocumentRow({ name, kind, bytes, at, visibility, href, actions, className }: {
-  name: string; kind: DocumentKind; bytes?: number; at?: Date | string | null; visibility: Visibility; href?: string; actions?: React.ReactNode; className?: string;
+  name: string; kind: DocumentKind; bytes?: number; at?: Date | string | null; /** omit on client pages (every client row is client-visible; DESIGN §5.11) */ visibility?: Visibility; href?: string; actions?: React.ReactNode; className?: string;
 }) {
   const t = useTranslations("document_kind");
   const tc = useTranslations("common");
@@ -36,7 +36,7 @@ export function DocumentRow({ name, kind, bytes, at, visibility, href, actions, 
           {t(kind)}{bytes !== undefined && <> · <span className="font-mono">{formatBytes(bytes)}</span></>}{at && <> · <DateTime value={at} variant="short" /></>}
         </p>
       </div>
-      <VisibilityBadge visibility={visibility} />
+      {visibility && <VisibilityBadge visibility={visibility} />}
       <div className="flex items-center gap-1">
         {href && <Button asChild variant="ghost" size="icon-sm" aria-label={tc("download")}><a href={href} download><Download /></a></Button>}
         {actions}

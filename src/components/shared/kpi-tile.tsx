@@ -11,10 +11,10 @@ export function KpiTile({ label, value, meta, href, tone = "neutral", className 
         {nonZero && <span className={cn("size-2 rounded-full", dot)} aria-hidden />}
         <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
       </div>
-      <div className="mt-2 font-mono text-kpi font-semibold tracking-[-0.02em] text-foreground" data-testid="kpi-value">{value}</div>
+      <div className="mt-1.5 font-mono text-kpi font-semibold tracking-[-0.02em] text-foreground" data-testid="kpi-value">{value}</div>
       {meta && <div className="mt-1 text-xs text-muted-foreground">{meta}</div>}
     </>
   );
-  const cls = cn("block rounded-xl border border-hairline-strong bg-card p-5", href && "transition-shadow duration-[120ms] hover:shadow-md", className);
+  const cls = cn("block rounded-xl border border-hairline-strong bg-card px-4 py-3.5", href && "transition-shadow duration-[120ms] hover:border-foreground/30 hover:shadow-md", className);
   return href ? <Link href={href} className={cls} data-testid="kpi-tile">{body}</Link> : <div className={cls} data-testid="kpi-tile">{body}</div>;
 }

@@ -6,6 +6,7 @@ import { Upload } from "lucide-react";
 import type { ActionResult } from "@/server/shared/http";
 import { FormShell } from "@/components/shared/form-shell";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FieldRow } from "./supplier-form";
@@ -48,7 +49,7 @@ export function DocumentUploadForm({ supplierId, supplierRef, trigger, action }:
         <input id="doc-file" name="file" type="file" className="sr-only" accept=".pdf,.xlsx,.xls,.csv,.zip,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} data-testid="doc-file" />
       </FieldRow>
       <div className="grid grid-cols-2 gap-4">
-        <FieldRow label="Valid until (optional)" htmlFor="doc-valid"><Input id="doc-valid" type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="font-mono" /></FieldRow>
+        <FieldRow label="Valid until (optional)" htmlFor="doc-valid"><DateInput id="doc-valid" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} /></FieldRow>
         <FieldRow label="Currency" htmlFor="doc-cur"><Input id="doc-cur" value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} maxLength={3} className="font-mono" /></FieldRow>
       </div>
       <FieldRow label="Notes (optional)" htmlFor="doc-notes"><Textarea id="doc-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></FieldRow>

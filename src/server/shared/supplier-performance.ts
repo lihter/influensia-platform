@@ -1,6 +1,7 @@
 /**
  * Supplier performance roll-up on order completion (SPEC 3.4 `delivered → completed`): orders_count+1,
- * on_time = delivered_at ≤ eta_port, last_order_at. Shared so BOTH completion paths (agent "Close" in ops/orders.ts and
+ * on_time = the factory's ex-works ship date ≤ the PO's promised ex-works ETA (QA-45: what the KPI label says — the
+ * factory is not blamed for sea freight or last-mile delivery), last_order_at. Shared so BOTH completion paths (agent "Close" in ops/orders.ts and
  * client "Confirm delivery" in client/orders.ts) call it. Touches the supplier schema internally; returns nothing.
  */
 import { and, eq, isNull } from "drizzle-orm";
@@ -14,10 +15,12 @@ export async function recordSupplierPerformance(tx: DbOrTx, orderId: string, at:
   const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!o) return;
   const [ship] = await tx.select().from(shipments).where(and(eq(shipments.orderId, orderId), isNull(shipments.deletedAt))).limit(1);
-  const pos = await tx.select({ supplierId: purchaseOrders.supplierId }).from(purchaseOrders).where(and(eq(purchaseOrders.orderId, orderId), isNull(purchaseOrders.deletedAt)));
+  const pos = await tx.select({ supplierId: purchaseOrders.supplierId, eta: purchaseOrders.exworksEta }).from(purchaseOrders).where(and(eq(purchaseOrders.orderId, orderId), isNull(purchaseOrders.deletedAt)));
   const delivered = ship?.deliveredAt ?? o.deliveredAt ?? at;
-  const onTime = ship?.etaPort ? isoDate(delivered)! <= ship.etaPort : null;
+  const shippedOn = ship?.exworksShippedAt ? isoDate(ship.exworksShippedAt)! : null;
   for (const supplierId of [...new Set(pos.map((p) => p.supplierId))]) {
+    const promised = pos.filter((p) => p.supplierId === supplierId).map((p) => p.eta).filter((x): x is string => !!x).sort().pop() ?? null;
+    const onTime = shippedOn && promised ? shippedOn <= promised : null;
     const [perf] = await tx.select().from(supplierPerformance).where(eq(supplierPerformance.supplierId, supplierId)).limit(1);
     const count = (perf?.ordersCount ?? 0) + 1;
     const rate = onTime === null ? perf?.onTimeRate ?? null : ((perf?.onTimeRate ?? 0) * (count - 1) + (onTime ? 1 : 0)) / count;

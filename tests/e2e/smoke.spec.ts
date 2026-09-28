@@ -82,7 +82,7 @@ test("agent login → /ops dashboard with KPI tiles; /app redirects to /ops; sig
   const tiles = page.getByTestId("kpi-tile");
   await expect(tiles).toHaveCount(4);
   const values = await page.getByTestId("kpi-value").allTextContents();
-  expect(values).toEqual(["3", "10", "3", "1"]);
+  expect(values).toEqual(["3", "9", "3", "1"]); // QA-29: the unassigned REQ-2026-0325-01 is listed under Unassigned only, not Waiting on us
   // AC-OPS-01
   const stale = page.getByTestId("section-stale");
   await expect(stale).toContainText("REQ-2026-0312-14");

@@ -3,14 +3,16 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { LayoutDashboard, Inbox, FolderOpen, Package, Factory, Boxes, Building2, Send, Search, Menu, LogOut, Settings, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Inbox, FolderOpen, Package, Factory, Boxes, Building2, Send, Search, Menu, LogOut, Settings, Layers, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { initials } from "@/lib/labels";
+import { CommandPalette, useTrackRecent } from "./command-palette";
 
-type Item = { href: string; label: string; icon: LucideIcon; count?: number; countTone?: "warning" | "neutral"; active: boolean };
-const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+type Item = { href: string; label: string; icon: LucideIcon; count?: number; countTone?: "warning" | "neutral"; countLabel?: string; active: boolean };
 
 /**
  * DESIGN §4.1 — ops sidebar: 232px section-alt rail, white active item with a 3px green left bar, count badges in mono.
@@ -21,18 +23,31 @@ export function OpsShell({ user, counts, children }: { user: { name: string; ema
   const tr = useTranslations("roles");
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
+  const [palette, setPalette] = React.useState(false);
+  useTrackRecent();
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((v) => !v); }
+      else if (e.key === "/" && !typing && !e.defaultPrevented && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setPalette(true); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const is = (p: string) => (p === "/ops" ? pathname === "/ops" : pathname.startsWith(p));
   const work: Item[] = [
-    { href: "/ops", label: t("dashboard"), icon: LayoutDashboard, active: is("/ops"), count: counts?.stale, countTone: "warning" },
-    { href: "/ops/queue", label: t("queue"), icon: Inbox, active: is("/ops/queue"), count: counts?.queue, countTone: "neutral" },
+    { href: "/ops", label: t("dashboard"), icon: LayoutDashboard, active: is("/ops"), count: counts?.stale, countTone: "warning", countLabel: `${counts?.stale ?? 0} stale ${counts?.stale === 1 ? "line" : "lines"} — no change in 5+ working days` },
+    { href: "/ops/queue", label: t("queue"), icon: Inbox, active: is("/ops/queue"), count: counts?.queue, countTone: "neutral", countLabel: `${counts?.queue ?? 0} unassigned ${counts?.queue === 1 ? "line" : "lines"} to claim` },
     { href: "/ops/requests", label: t("requests"), icon: FolderOpen, active: is("/ops/requests") || is("/ops/lines") },
     { href: "/ops/orders", label: t("orders"), icon: Package, active: is("/ops/orders") },
   ];
   const master: Item[] = [
     { href: "/ops/suppliers", label: t("suppliers"), icon: Factory, active: is("/ops/suppliers") },
     { href: "/ops/products", label: t("products"), icon: Boxes, active: is("/ops/products") },
+    { href: "/ops/factory-ranges", label: "Factory ranges", icon: Layers, active: is("/ops/factory-ranges") },
     { href: "/ops/clients", label: t("clients"), icon: Building2, active: is("/ops/clients") },
-    { href: "/ops/outbox", label: t("outbox"), icon: Send, active: is("/ops/outbox"), count: counts?.outbox, countTone: "warning" },
+    { href: "/ops/outbox", label: t("outbox"), icon: Send, active: is("/ops/outbox"), count: counts?.outbox, countTone: "warning", countLabel: `${counts?.outbox ?? 0} ${counts?.outbox === 1 ? "email" : "emails"} queued, not sent yet` },
     { href: "/ops/settings", label: t("settings"), icon: Settings, active: is("/ops/settings") },
   ];
   const nav = (
@@ -42,7 +57,7 @@ export function OpsShell({ user, counts, children }: { user: { name: string; ema
         <span className="inline-flex h-[18px] items-center rounded-md border border-neutral-border bg-card px-1.5 text-[10px] font-semibold tracking-[0.08em] text-neutral">{t("opsChip")}</span>
       </div>
       <div className="px-3 pb-3">
-        <button type="button" className="flex h-9 w-full items-center gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm text-faint" aria-label={t("search")}>
+        <button type="button" onClick={() => { setOpen(false); setPalette(true); }} data-testid="open-palette" aria-keyshortcuts="Meta+K Control+K /" className="flex h-9 w-full items-center gap-2 rounded-lg border border-input bg-card px-3 text-left text-sm text-faint transition-colors duration-[120ms] hover:border-hairline-strong hover:text-muted-foreground" aria-label={t("search")}>
           <Search className="size-4" /><span className="flex-1 truncate">{t("search")}</span><kbd className="font-mono text-2xs text-muted-foreground">⌘K</kbd>
         </button>
       </div>
@@ -64,7 +79,14 @@ export function OpsShell({ user, counts, children }: { user: { name: string; ema
                   >
                     <it.icon className="size-[18px]" strokeWidth={1.75} />
                     <span className="flex-1">{it.label}</span>
-                    {typeof it.count === "number" && it.count > 0 && <span className={cn("font-mono text-2xs", it.countTone === "warning" ? "text-warning" : "text-muted-foreground")} data-testid="nav-count">{it.count}</span>}
+                    {typeof it.count === "number" && it.count > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span aria-label={it.countLabel} className={cn("inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 font-mono text-2xs", it.countTone === "warning" ? "bg-warning-wash text-warning" : "bg-card text-muted-foreground")} data-testid="nav-count">{it.count}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">{it.countLabel}</TooltipContent>
+                      </Tooltip>
+                    )}
                   </Link>
                 </li>
               ))}
@@ -85,9 +107,10 @@ export function OpsShell({ user, counts, children }: { user: { name: string; ema
     </div>
   );
   return (
-    <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[14.5rem_1fr]">
+    <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[14.5rem_1fr] lg:bg-[linear-gradient(to_right,var(--sidebar)_calc(14.5rem-1px),var(--sidebar-border)_calc(14.5rem-1px),var(--sidebar-border)_14.5rem,transparent_14.5rem)]">
       <aside className="sticky top-0 hidden h-dvh border-r border-sidebar-border bg-sidebar lg:block" data-testid="ops-sidebar">{nav}</aside>
-      <div className="flex min-w-0 flex-col">
+      <CommandPalette open={palette} onOpenChange={setPalette} nav={[...work, ...master].map(({ href, label, icon }) => ({ href, label, icon }))} />
+      <div className="flex min-w-0 flex-col overflow-x-clip">
         <div className="flex h-12 items-center gap-2 border-b border-border bg-card px-4 lg:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild><Button variant="ghost" size="icon" aria-label={t("menu")}><Menu /></Button></SheetTrigger>
@@ -95,7 +118,8 @@ export function OpsShell({ user, counts, children }: { user: { name: string; ema
           </Sheet>
           <span className="text-base font-bold tracking-[0.04em] text-green-500">INFLUENSIA</span>
         </div>
-        <main id="main" className="w-full max-w-[100rem] flex-1 px-4 py-6 sm:px-6">{children}</main>
+        {/* Pages own their vertical rhythm with full-bleed bands (shared/section-band.tsx); main only sets the gutter. */}
+        <main id="main" className="w-full max-w-[100rem] flex-1 px-4 pb-12 sm:px-6">{children}</main>
       </div>
     </div>
   );

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { requireClientPage, NotFound } from "@/server/shared/authorize";
 import { getCatalogProduct } from "@/server/client/catalog";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageBand } from "@/components/shared/section-band";
+import { label, specKeyLabel, specValueLabel, unitLabel } from "@/lib/labels";
 import { UtilityBadge } from "@/components/shared/chips";
-import { Money, Qty, UnitPrice, DateTime } from "@/components/shared/formatters";
+import { Money, Qty, UnitPrice } from "@/components/shared/formatters";
+import { fmtDate } from "@/lib/format-date";
 import { CatalogImage, ReferencePrice } from "@/components/app/catalog/catalog-card";
 import { RequestOfferForm } from "@/components/app/catalog/request-offer-form";
 import { requestOfferAction } from "../actions";
@@ -25,12 +27,14 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
   return (
     <>
       <PageHeader
-        eyebrow={<Link href="/app/catalog" className="link inline-flex items-center gap-1 normal-case tracking-normal"><ArrowLeft className="size-3" />Catalog</Link>}
+        band
+        crumbs={[{ href: "/app/catalog", label: "Catalog" }, { label: <span className="font-mono">{p.ref}</span> }]}
         title={p.name}
-        meta={<><span>{p.category ?? "—"}</span><span className="font-mono text-xs">{p.ref}</span>{p.orderedBefore && <UtilityBadge kind="repeat">Ordered before</UtilityBadge>}</>}
-        actions={<RequestOfferForm p={p} action={requestOfferAction} size="lg" />}
+        meta={<>{p.category && <span>{label("productCategory", p.category)}</span>}{p.orderedBefore && <UtilityBadge kind="repeat" className="normal-case tracking-normal">Ordered before</UtilityBadge>}</>}
+        actions={<div className="lg:hidden"><RequestOfferForm p={p} action={requestOfferAction} size="lg" className="w-full" /></div>}
       />
-      <div className="grid gap-8 lg:grid-cols-[1fr_20rem]">
+      <PageBand tone="page" pad="lg">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex flex-col gap-8">
           <div className="overflow-hidden rounded-xl border border-border bg-card">
             <CatalogImage image={p.images[0] ?? p.image} name={p.name} className="aspect-[16/9]" />
@@ -50,7 +54,7 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
             <div className="mb-3 flex items-baseline justify-between border-t border-rule-ink pt-4"><h2 id="spec-h" className="text-lg font-semibold">Specification</h2>{p.referenceSpecVersion != null && <UtilityBadge kind="version">v{p.referenceSpecVersion}</UtilityBadge>}</div>
             {p.spec.length === 0 ? <p className="text-sm text-muted-foreground">We confirm the full specification with your offer.</p> : (
               <dl className="sheet" data-testid="spec-fields">
-                {p.spec.map((f) => <div key={f.key} className="sheet-row grid grid-cols-[10rem_1fr] gap-3 text-sm"><dt className="text-muted-foreground capitalize">{f.key}</dt><dd className="font-medium">{f.value}</dd></div>)}
+                {p.spec.map((f) => <div key={f.key} className="sheet-row grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-3 text-sm"><dt className="text-muted-foreground">{specKeyLabel(f.key)}</dt><dd className="font-medium [overflow-wrap:anywhere]">{specValueLabel(f.value)}</dd></div>)}
               </dl>
             )}
           </section>
@@ -61,9 +65,9 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
                 {p.previousOrders.map((o) => (
                   <li key={o.orderRef} className="sheet-row flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <Link href={`/app/orders/${o.orderRef}`} className="link font-mono text-xs">{o.orderRef}</Link>
-                    <Qty qty={o.qty} unit={o.unit} />
+                    <Qty qty={o.qty} unit={unitLabel(o.unit, o.qty)} />
                     <span><UnitPrice minorE2={o.unitPrice.minorE2} currency={o.unitPrice.currency} unit={o.unit} />{o.fee && <span className="text-xs text-ink-2"> + <Money minor={o.fee.minor} currency={o.fee.currency} /> fee</span>}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">{o.deliveredAt ? <>delivered <DateTime value={o.deliveredAt} /></> : "in progress"}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{o.deliveredAt ? <>delivered {fmtDate(o.deliveredAt)}</> : <Link href={`/app/orders/${o.orderRef}`} className="link">in progress</Link>}</span>
                   </li>
                 ))}
               </ul>
@@ -79,6 +83,7 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
           </div>
         </aside>
       </div>
+      </PageBand>
     </>
   );
 }

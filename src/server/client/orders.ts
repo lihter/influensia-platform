@@ -10,7 +10,8 @@ import { getDb, type DbOrTx } from "@/db";
 import { orders, orderLines, requestLines, requests, organizations, users, payments, artworks, inspections, shipments, samples, comments, activityEvents, products } from "@/db/schema/app";
 import { type Ctx, isClient, Forbidden, NotFound } from "@/server/shared/authorize";
 import { loadLineContexts } from "@/server/shared/line-context";
-import { milestoneStep, isActionMilestone, type Milestone } from "@/server/shared/state-machine";
+import { milestoneStep, isActionMilestone, milestoneFor, type Milestone } from "@/server/shared/state-machine";
+import { tryReorderFastPath } from "@/server/shared/reorder-fastpath";
 import { subLabelFor, exceptionClientText, eventText, isFeedEvent, MILESTONE_EVENT_TYPES } from "@/server/shared/labels";
 import { transition, transitionOrder } from "@/server/shared/transition";
 import { logActivity } from "@/server/shared/activity";
@@ -23,6 +24,7 @@ import { nextRef, lineRef as mkLineRef } from "@/server/shared/ids";
 import { formatDate } from "@/server/shared/dates";
 import { now } from "@/server/shared/clock";
 import { clientWaitingReason, etaLabelFor } from "./dashboard";
+import { collapseClientUpdates, collapseClientHistory } from "@/server/shared/timeline";
 import { clientDocumentsFor, clientDocumentById, clientDocumentByFileId } from "./documents";
 import { ClientOrderDto, ClientPaymentDto, ClientArtworkDto, ClientInspectionDto, ClientShipmentDto, ClientOrderLineDto, ClientPreviousOrderDto, ClientUpdateDto, ClientEventDto } from "./dto";
 import { ClientOrderPageDto, ClientReorderResultDto } from "./dto/orders";
@@ -64,13 +66,14 @@ export async function loadClientOrderPage(db: DbOrTx, orgId: string, ref: string
     id: ol.id, lineRef: line.lineRef, name: line.name, qty: ol.qty, unit: ol.unit, unitPrice: { minorE2: ol.unitPriceMinorE2, currency: o.currency, unit: ol.unit },
     fee: o.pricingDisplay === "factory_plus_fee" ? { minor: ol.feeMinor, currency: o.currency } : null, specVersion: ol.specVersion, artworkRequired: ol.artworkRequired, clientSku: line.clientSku,
   }));
-  const pays = payRows.map((p) => ClientPaymentDto.parse({
+  const KIND_RANK: Record<string, number> = { deposit: 0, fee: 1, balance: 2, sample: 3 }; // QA-49: stable Deposit, Fee, Balance
+  const pays = [...payRows].sort((a, b) => (KIND_RANK[a.kind] ?? 9) - (KIND_RANK[b.kind] ?? 9) || a.createdAt.getTime() - b.createdAt.getTime()).map((p) => ClientPaymentDto.parse({
     id: p.id, kind: p.kind, pct: p.pct, amount: { minor: p.amountMinor, currency: p.currency }, status: p.status, dueOn: p.dueOn,
     dueLabel: p.status === "paid" ? null : p.dueOn ? `due ${formatDate(p.dueOn)}` : p.kind === "balance" ? "on QC pass" : null, paidAt: p.paidAt?.toISOString() ?? null,
   }));
   const latestDieline = (await clientDocumentsFor(db, orgId, [{ entityType: "order", entityId: o.id }])).find((d) => d.kind === "dieline") ?? null;
   const artworkDtos = [];
-  const artworkDue: { orderLineId: string; lineRef: string; name: string }[] = [];
+  const artworkDue: { orderLineId: string; lineRef: string; name: string; dieline: typeof latestDieline }[] = [];
   for (const { ol, line } of olRows) {
     const cur = artRows.find((a) => a.orderLineId === ol.id) ?? null;
     if (cur) {
@@ -78,8 +81,8 @@ export async function loadClientOrderPage(db: DbOrTx, orgId: string, ref: string
         id: cur.id, lineRef: line.lineRef, version: cur.version, status: cur.status, file: await clientDocumentByFileId(db, orgId, cur.fileId), dieline: (await clientDocumentByFileId(db, orgId, cur.dielineFileId)) ?? latestDieline,
         note: cur.clientNote, decidedAt: cur.decidedAt?.toISOString() ?? null,
       }));
-      if (ol.artworkRequired && cur.status === "changes_requested") artworkDue.push({ orderLineId: ol.id, lineRef: line.lineRef, name: line.name });
-    } else if (ol.artworkRequired) artworkDue.push({ orderLineId: ol.id, lineRef: line.lineRef, name: line.name });
+      if (ol.artworkRequired && cur.status === "changes_requested") artworkDue.push({ orderLineId: ol.id, lineRef: line.lineRef, name: line.name, dieline: (await clientDocumentByFileId(db, orgId, cur.dielineFileId)) ?? latestDieline });
+    } else if (ol.artworkRequired) artworkDue.push({ orderLineId: ol.id, lineRef: line.lineRef, name: line.name, dieline: latestDieline }); // QA-18: the dieline is there before any artwork is
   }
   const insp = inspRows[0] ?? null;
   const inspection = insp ? ClientInspectionDto.parse({ scheduledFor: insp.scheduledFor, inspectedAt: insp.inspectedAt?.toISOString() ?? null, result: insp.result, report: insp.visibleToClient ? await clientDocumentById(db, orgId, insp.reportDocumentId) : null }) : null;
@@ -121,7 +124,7 @@ export async function loadClientOrderPage(db: DbOrTx, orgId: string, ref: string
   ].sort((a, b) => b.at.localeCompare(a.at));
 
   const previousOrders = await previousOrdersOf(db, orgId, o.id, olRows.map((r) => r.ol.productId).filter((x): x is string => !!x));
-  return ClientOrderPageDto.parse({ order, companyLabel: row.orgName, agentName: lc?.agentName ?? null, updates, history, previousOrders, artworkDue });
+  return ClientOrderPageDto.parse({ order, companyLabel: row.orgName, agentName: lc?.agentName ?? null, updates: collapseClientUpdates(updates), history: collapseClientHistory(history), previousOrders, artworkDue });
 }
 
 /** D-19: other delivered/completed orders of the same product(s) in this org. */
@@ -159,7 +162,7 @@ export async function confirmDelivery(ctx: Ctx, ref: string, issues?: string | n
     const o = await ownOrder(tx, ctx, ref);
     if (o.state !== "delivered") throw new ClientOrderError("E_NOT_DELIVERED");
     const at = now();
-    await logActivity(tx, { orgId: o.orgId, entityType: "order", entityId: o.id, type: "delivery_confirmed", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: o.ref, text: issues?.trim() ? `Delivery confirmed — ${issues.trim()}` : "Delivery confirmed" } });
+    await logActivity(tx, { orgId: o.orgId, entityType: "order", entityId: o.id, type: "delivery_confirmed", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: o.ref, hasNote: !!issues?.trim(), text: "Delivery confirmed" } }); // QA-30: the note is the comment below, not repeated here
     if (issues?.trim()) {
       const id = uuidv7();
       await tx.insert(comments).values({ id, orgId: o.orgId, entityType: "order", entityId: o.id, authorId: ctx.userId, authorName: ctx.name, body: issues.trim(), kind: "update", visibility: "client", source: "app", createdBy: ctx.userId, createdAt: at, updatedAt: at });
@@ -213,9 +216,9 @@ export async function askAboutOrder(ctx: Ctx, ref: string, text: string) {
 
 /**
  * F-12 Reorder (minimal path — no supplier-schema access from client code): a new request with `is_repeat` lines,
- * product/spec/SKU copied, assigned to the previous order's agent and moved to in_review. `reorder_created` is
- * client-visible on the new line; `ops_new_request` fires from the draft → submitted transition.
- * The "valid quote → negotiating + draft offer" fast path needs the sourcing board module (ops side).
+ * product/spec/SKU copied, assigned to the previous order's agent. QA-05 fast path (shared/reorder-fastpath.ts): previous
+ * supplier's quote still valid → `negotiating` with the supplier selected and a prefilled draft offer; else `in_review`.
+ * One `ops_new_request` titled "Repeat order …" per ops user.
  */
 export async function reorder(ctx: Ctx, ref: string, p: { lines: { orderLineId: string; qty: number }[] }) {
   if (!isClient(ctx)) throw new Forbidden("clients only");
@@ -229,30 +232,44 @@ export async function reorder(ctx: Ctx, ref: string, p: { lines: { orderLineId: 
     if (!chosen.length) throw new ClientOrderError("E_NO_LINES");
     const reqRef = await nextRef(tx as never, "REQ", at.getUTCFullYear());
     const requestId = uuidv7();
-    await tx.insert(requests).values({ id: requestId, ref: reqRef, orgId: o.orgId, source: "portal", status: "draft", note: `Reorder of ${o.ref}`, createdBy: ctx.userId, createdAt: at, updatedAt: at });
+    await tx.insert(requests).values({ id: requestId, ref: reqRef, orgId: o.orgId, source: "portal", status: "submitted", submittedAt: at, note: `Repeat order of ${o.ref}`, createdBy: ctx.userId, createdAt: at, updatedAt: at });
     const lineRefs: string[] = [];
     let n = 1;
+    let fastCount = 0;
+    const orgName = await companyName(tx, o.orgId);
     for (const { sel, row } of chosen) {
       const lineId = uuidv7();
       const lr = mkLineRef(reqRef, n);
       const [prod] = row.ol.productId ? await tx.select({ id: products.id }).from(products).where(eq(products.id, row.ol.productId)).limit(1) : [];
+      const agent = o.assignedAgentId ?? row.line.assignedAgentId;
       await tx.insert(requestLines).values({
         id: lineId, requestId, orgId: o.orgId, lineNo: n++, lineRef: lr, productId: prod?.id ?? null, name: row.line.name, qtyFirst: sel.qty, unit: row.ol.unit, clientSku: row.line.clientSku, customisation: row.line.customisation, materials: row.line.materials,
-        clientLinks: row.line.clientLinks, linksMeta: row.line.linksMeta, state: "draft", milestone: "received", specVersion: row.ol.specVersion, artworkRequired: row.ol.artworkRequired, sampleRequired: false, isRepeat: true,
-        assignedAgentId: o.assignedAgentId ?? row.line.assignedAgentId, lastStateChangeAt: at, createdBy: ctx.userId, createdAt: at, updatedAt: at,
+        clientLinks: row.line.clientLinks, linksMeta: row.line.linksMeta, state: "submitted", milestone: "received", specVersion: row.ol.specVersion, artworkRequired: row.ol.artworkRequired, sampleRequired: false, isRepeat: true,
+        assignedAgentId: agent, lastStateChangeAt: at, createdBy: ctx.userId, createdAt: at, updatedAt: at,
       });
       await logActivity(tx, { orgId: o.orgId, entityType: "request_line", entityId: lineId, type: "line_created", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: lr, isRepeat: true } });
-      await transition(lineId, "submitted", ctx, { tx, at: new Date(at.getTime() + 1000) });
-      await logActivity(tx, { orgId: o.orgId, entityType: "request_line", entityId: lineId, type: "reorder_created", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at: new Date(at.getTime() + 1500), payload: { ref: lr, fromOrderRef: o.ref, text: `Reorder of ${o.ref}` } });
-      await logActivity(tx, { orgId: o.orgId, entityType: "order", entityId: o.id, type: "reorder_created", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at: new Date(at.getTime() + 1500), payload: { ref: o.ref, newRef: lr, text: `Reorder created — ${lr}` } });
-      const agent = o.assignedAgentId ?? row.line.assignedAgentId;
-      if (agent) {
-        const [u] = await tx.select({ name: users.name }).from(users).where(eq(users.id, agent)).limit(1);
-        await logActivity(tx, { orgId: o.orgId, entityType: "request_line", entityId: lineId, type: "line_assigned", actorId: ctx.userId, actorName: "System", visibility: "internal", at: new Date(at.getTime() + 2000), payload: { ref: lr, agentId: agent, agentName: u?.name ?? null, reason: "repeat order" } });
+      await logActivity(tx, { orgId: o.orgId, entityType: "request_line", entityId: lineId, type: "reorder_created", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at: new Date(at.getTime() + 1500), payload: { ref: lr, fromOrderRef: o.ref, text: `Repeat order of ${o.ref}` } });
+      await logActivity(tx, { orgId: o.orgId, entityType: "order", entityId: o.id, type: "reorder_created", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at: new Date(at.getTime() + 1500), payload: { ref: o.ref, newRef: lr, text: `Repeat order created — ${lr}` } });
+      const [u] = agent ? await tx.select({ name: users.name }).from(users).where(eq(users.id, agent)).limit(1) : [];
+      if (agent) await logActivity(tx, { orgId: o.orgId, entityType: "request_line", entityId: lineId, type: "line_assigned", actorId: ctx.userId, actorName: "System", visibility: "internal", at: new Date(at.getTime() + 2000), payload: { ref: lr, agentId: agent, agentName: u?.name ?? null, reason: "repeat order" } });
+      // QA-05 fast path: the previous supplier's quote is still valid → negotiating with the supplier selected + a prefilled draft offer
+      const { fastPath } = await tryReorderFastPath(tx, ctx, { newLineId: lineId, newLineRef: lr, orgId: o.orgId, previousParticipationId: (row.ol.participationId as unknown as string | null) ?? (row.line.selectedParticipationId as unknown as string | null), previousLineId: row.line.id, at: new Date(at.getTime() + 2200) });
+      if (fastPath) {
+        fastCount++;
+        const t = new Date(at.getTime() + 2500);
+        await tx.update(requestLines).set({ state: "negotiating", milestone: milestoneFor("negotiating"), lastStateChangeAt: t, updatedAt: t }).where(eq(requestLines.id, lineId));
+        await logActivity(tx, { orgId: o.orgId, entityType: "request_line", entityId: lineId, type: "state_changed", actorId: null, actorName: "System", visibility: "client", at: t, payload: { ref: lr, from: "submitted", to: "negotiating", milestone: "finding_factory", milestoneChanged: true, feed: true, note: null, fastPath: "repeat_order", text: "Repeat order — price being confirmed" } });
+      } else if (agent) {
         await transition(lineId, "in_review", null, { tx, at: new Date(at.getTime() + 2500), payload: { agentName: u?.name ?? null } });
       }
       lineRefs.push(lr);
     }
+    // ops email (QA-05 / QA-40): titled "Repeat order", with the client name and a correct plural
+    const opsRecipients = await opsUsers(tx);
+    for (const u of opsRecipients) {
+      await enqueue({ userId: u.id, toEmail: u.email, template: "ops_new_request", entityRef: reqRef, subject: `Repeat order ${reqRef} from ${orgName} (${lineRefs.length} ${lineRefs.length === 1 ? "line" : "lines"}${fastCount ? `, ${fastCount} with a valid quote` : ""})`, payload: { ref: reqRef, url: `/ops/requests/${reqRef}`, lines: lineRefs, repeatOf: o.ref, fastPath: fastCount }, idempotencyKey: `ops_new_request:${requestId}:${u.id}`, at }, tx);
+    }
+    await logActivity(tx, { orgId: o.orgId, entityType: "request", entityId: requestId, type: "request_submitted", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: reqRef, text: `Repeat order of ${o.ref}`, lines: lineRefs.length } });
     await tx.update(requests).set({ status: "active", submittedAt: at, updatedAt: at }).where(eq(requests.id, requestId));
     return ClientReorderResultDto.parse({ requestRef: reqRef, lineRefs, href: `/app/requests/${reqRef}` });
   });

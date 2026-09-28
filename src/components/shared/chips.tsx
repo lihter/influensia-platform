@@ -19,7 +19,7 @@ export function StateChip({ state, stale, className }: { state: LineState; stale
 }
 
 /** DESIGN §5.3-A — client milestone pill: calm neutral; green with ▲ when the client owes the move; success when delivered. */
-export function MilestoneChip({ milestone, waitingOnClient, className, showStep }: { milestone: Milestone; waitingOnClient?: boolean; className?: string; showStep?: number }) {
+export function MilestoneChip({ milestone, waitingOnClient, className, showStep, label }: { milestone: Milestone; waitingOnClient?: boolean; className?: string; showStep?: number; /** truthful label from the DTO (`milestoneLabel`, QA-12); defaults to the milestone name */ label?: string }) {
   const t = useTranslations("milestone");
   const delivered = milestone === "delivered";
   return (
@@ -32,7 +32,7 @@ export function MilestoneChip({ milestone, waitingOnClient, className, showStep 
       )}
     >
       {waitingOnClient && !delivered && <Triangle className="size-2 fill-current" aria-label={t("yourAction")} />}
-      {t(milestone)}
+      {label ?? t(milestone)}
       {showStep !== undefined && <span className="font-mono text-2xs text-muted-foreground">{t("stepOf", { step: showStep })}</span>}
     </span>
   );

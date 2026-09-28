@@ -29,6 +29,8 @@ import { orderRefFromRequest, poRef as mkPoRef, piNumber as mkPiNumber } from "@
 import { getStorage } from "@/server/shared/storage";
 import { assertClean, loadLeakSources } from "@/server/shared/leak-check";
 import { eventText } from "@/server/shared/labels";
+import { collapseOpsFeed } from "@/server/shared/timeline";
+import { label } from "@/lib/labels";
 import { listDocumentsFor, uploadDocument, publishDocument, throwIfBlocked, type OpsDocumentRow, type PublishResult } from "./documents";
 
 /** Domain preconditions (SPEC §3.4 "Pre" column) surfaced to the UI as `{ ok: false, error: code }`. */
@@ -38,6 +40,9 @@ export class OrderError extends Error {
 }
 
 /* ═══════════════════════════ pure helpers (unit-tested) ═══════════════════════════ */
+
+/** QA-04: what the client reads when an order is confirmed — no invoice claim until the PI is published. */
+export const ORDER_CONFIRMED_TEXT = "Order confirmed — we're preparing your invoice";
 
 /** Unit price from an option's ladder at a quantity (largest break ≤ qty, else the smallest). */
 export function unitPriceAtQty(breaks: PriceBreak[] | null | undefined, qty: number | null): number | null {
@@ -86,6 +91,10 @@ export function primaryActionFor(p: { state: LineState; exception: LineException
 export function allowedOrderTransitions(state: LineState): State[] {
   return [...(TRANSITIONS[state] ?? [])];
 }
+
+/** QA-49: payments always read Deposit, Fee, Balance, Sample — never re-ordered by updates. */
+const KIND_RANK: Record<string, number> = { deposit: 0, fee: 1, balance: 2, sample: 3 };
+export const byPaymentKind = (a: { kind: string; createdAt: Date }, b: { kind: string; createdAt: Date }) => (KIND_RANK[a.kind] ?? 9) - (KIND_RANK[b.kind] ?? 9) || a.createdAt.getTime() - b.createdAt.getTime();
 
 export const isOverdue = (dueOn: string | null, status: PaymentStatus, ref = today()) => status === "pending" && !!dueOn && dueOn < ref;
 
@@ -230,7 +239,7 @@ export async function getOpsOrder(ctx: Ctx, ref: string): Promise<OpsOrderDetail
     const po = ol.poId ? poById.get(ol.poId as unknown as string) : undefined;
     return { id: ol.id, requestLineId: line.id, lineRef: line.lineRef, lineNo: ol.lineNo, name: line.name, qty: ol.qty, unit: ol.unit, unitPriceMinorE2: ol.unitPriceMinorE2, feeMinor: ol.feeMinor, factoryUnitPriceMinorE2: ol.factoryUnitPriceMinorE2, currency: o.currency, specVersion: ol.specVersion, artworkRequired: ol.artworkRequired, supplierName: po?.s.legalName ?? null, supplierRef: po?.s.ref ?? null, poRef: po?.po.ref ?? null, poId: po?.po.id ?? null, clientSku: line.clientSku };
   });
-  const pays: OpsPayment[] = payRows.map((p) => ({ id: p.id, kind: p.kind, pct: p.pct, amountMinor: p.amountMinor, currency: p.currency, payee: p.payee, status: p.status, dueOn: p.dueOn, paidAt: p.paidAt?.toISOString() ?? null, reference: p.reference, recordedByName: p.recordedBy ? names[p.recordedBy] ?? null : null, overdue: isOverdue(p.dueOn, p.status) }));
+  const pays: OpsPayment[] = [...payRows].sort(byPaymentKind).map((p) => ({ id: p.id, kind: p.kind, pct: p.pct, amountMinor: p.amountMinor, currency: p.currency, payee: p.payee, status: p.status, dueOn: p.dueOn, paidAt: p.paidAt?.toISOString() ?? null, reference: p.reference, recordedByName: p.recordedBy ? names[p.recordedBy] ?? null : null, overdue: isOverdue(p.dueOn, p.status) }));
   const documentsList = await listDocumentsFor(db, [
     { entityType: "order", entityId: o.id, label: o.ref },
     ...olRows.map((r) => ({ entityType: "request_line" as const, entityId: r.line.id, label: r.line.lineRef })),
@@ -302,7 +311,7 @@ async function loadOrderTimeline(db: DbOrTx, orderId: string, docs: OpsDocumentR
       attachments: c.attachments.map((id) => docById.get(id)).filter((d): d is OpsDocumentRow => !!d).map((d) => ({ id: d.id, name: d.filename, href: d.downloadUrl })),
     })),
   ];
-  return entries.sort((a, b) => b.at.localeCompare(a.at));
+  return collapseOpsFeed(entries.sort((a, b) => b.at.localeCompare(a.at)));
 }
 
 function opsEventText(type: string, p: Record<string, unknown>): string {
@@ -317,7 +326,7 @@ function opsEventText(type: string, p: Record<string, unknown>): string {
     case "comment_posted": return "Note";
     case "whatsapp_logged": return "WhatsApp logged";
     case "line_assigned": return `Assigned to ${s("agentName") ?? ""}`.trim();
-    default: return s("text") ?? type.replace(/_/g, " ");
+    default: return s("text") ?? label("activityType", type);
   }
 }
 
@@ -413,15 +422,16 @@ export async function createOrderFromAccepted(ctx: Ctx, input: CreateOrderInput)
       remainder = 0;
       const [line] = await tx.select({ productId: requestLines.productId, sel: requestLines.selectedParticipationId }).from(requestLines).where(eq(requestLines.id, cl.requestLineId)).limit(1);
       await tx.insert(orderLines).values({ id: uuidv7(), orderId, requestLineId: cl.requestLineId, productId: line?.productId ?? null, specVersion: cl.specVersion, lineNo: lineNo++, qty: cl.qty, unit: cl.unit, unitPriceMinorE2: cl.unitPriceMinorE2 ?? 0, feeMinor: fee, factoryUnitPriceMinorE2: cl.factoryUnitPriceMinorE2, participationId: line?.sel ?? null, poId: poIdBySupplier.get(cl.supplierId!) as never, artworkRequired: sel.artworkRequired, createdAt: at });
-      await transition(cl.requestLineId, "order_confirmed", ctx, { tx, at, notifyClient: false, payload: { orderRef: ref, piNumber } });
+      // QA-04: the line mirror is history-only (the order event below is the one feed item) and never claims an invoice
+      await transition(cl.requestLineId, "order_confirmed", ctx, { tx, at, notifyClient: false, payload: { orderRef: ref, feed: false } });
     }
-    const dueOn = toIsoDate(addWorkingDays(at, 5));
+    // QA-04: no due date until the PI is published (publishOrderDocument sets deposit/fee due = publish + 5 working days)
     for (const p of paymentPlan({ goodsMinor: goods, feeMinor: input.feeMinor, depositPct: input.depositPct, commercialMode: input.commercialMode })) {
-      await tx.insert(payments).values({ id: uuidv7(), orgId: req.orgId, orderId, kind: p.kind, pct: p.pct, amountMinor: p.amountMinor, currency: chosen[0].cl.currency, payee: p.payee, status: "pending", dueOn: p.kind === "balance" ? null : dueOn, createdBy: ctx.userId, createdAt: at, updatedAt: at });
+      await tx.insert(payments).values({ id: uuidv7(), orgId: req.orgId, orderId, kind: p.kind, pct: p.pct, amountMinor: p.amountMinor, currency: chosen[0].cl.currency, payee: p.payee, status: "pending", dueOn: null, createdBy: ctx.userId, createdAt: at, updatedAt: at });
     }
     await tx.update(requests).set({ status: "active", updatedAt: at }).where(eq(requests.id, req.id));
-    await logActivity(tx, { orgId: req.orgId, entityType: "order", entityId: orderId, type: "order_confirmed", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref, piNumber, text: `Order confirmed — invoice ${piNumber} issued` } });
-    await logActivity(tx, { orgId: req.orgId, entityType: "order", entityId: orderId, type: "state_changed", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at: new Date(at.getTime() + 1000), payload: { ref, from: "offer_accepted", to: "order_confirmed", milestone: "order_confirmed", milestoneChanged: false, feed: true, note: null, piNumber, text: `Order confirmed — invoice ${piNumber} issued` } });
+    // QA-04: ONE client-visible "Order confirmed" event (the lines' mirror events are history-only); the invoice is announced when the PI is published
+    await logActivity(tx, { orgId: req.orgId, entityType: "order", entityId: orderId, type: "order_confirmed", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref, milestone: "order_confirmed", text: ORDER_CONFIRMED_TEXT } });
     for (const u of await clientUsersOf(tx, req.orgId)) {
       await enqueue({ userId: u.id, toEmail: u.email, template: "client_order_confirmed", entityRef: ref, subject: `Order confirmed — ${ref}`, payload: { ref, piNumber, total: formatMoney({ minor: total, currency: chosen[0].cl.currency }), url: `/app/orders/${ref}` }, idempotencyKey: `client_order_confirmed:${orderId}:${u.id}`, at }, tx);
     }
@@ -648,6 +658,8 @@ export async function startProduction(ctx: Ctx, orderId: string, p: { exworksEta
       if (pending.length) throw new OrderError("E_PAYMENTS_PENDING");
       if (ols.some((l) => l.artworkRequired)) throw new OrderError("E_ARTWORK_REQUIRED");
     }
+    // QA-25: a PO that goes into production has been issued (draft → issued is recorded, not skipped)
+    await tx.update(purchaseOrders).set({ issuedAt: at }).where(and(eq(purchaseOrders.orderId, o.id), isNull(purchaseOrders.deletedAt), isNull(purchaseOrders.issuedAt)));
     await tx.update(purchaseOrders).set({ exworksEta: p.exworksEta, status: "in_production", updatedAt: at }).where(and(eq(purchaseOrders.orderId, o.id), isNull(purchaseOrders.deletedAt)));
     await transitionOrder(o.id, "in_production", ctx, { tx, at, notifyClient: false, payload: { eta: p.exworksEta, text: `In production — ex-works ETA ${formatDate(p.exworksEta)}` } });
     await notifyClients(tx, o, "client_milestone_changed", `${o.ref}: In production — ex-works ETA ${formatDate(p.exworksEta)}`, { name: o.ref, milestone: "in_production", eta: p.exworksEta }, `in_production:${at.toISOString()}`, at);
@@ -820,7 +832,7 @@ export async function setCustomsStatus(ctx: Ctx, orderId: string, customsStatus:
     const o = await lockOrder(tx, orderId);
     const at = now();
     await upsertShipment(tx, o, { customsStatus }, ctx, at);
-    await logActivity(tx, { orgId: o.orgId, entityType: "order", entityId: o.id, type: "shipment_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: o.ref, customsStatus, text: `Customs ${customsStatus.replace(/_/g, " ")}` } });
+    await logActivity(tx, { orgId: o.orgId, entityType: "order", entityId: o.id, type: "shipment_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: o.ref, customsStatus, text: `Customs: ${label("customsStatus", customsStatus).toLowerCase()}` } });
     return { orderRef: o.ref };
   });
 }
@@ -832,8 +844,11 @@ export async function markDelivered(ctx: Ctx, orderId: string, p: { deliveredAt:
     const o = await lockOrder(tx, orderId);
     const at = now();
     const deliveredAt = new Date(`${p.deliveredAt}T09:00:00Z`);
-    await upsertShipment(tx, o, { deliveredAt }, ctx, at);
+    // QA-25: delivered goods have cleared customs (unless an agent flagged them held), and the factory POs are done
+    const [shipRow] = await tx.select({ customsStatus: shipments.customsStatus }).from(shipments).where(and(eq(shipments.orderId, o.id), isNull(shipments.deletedAt))).limit(1);
+    await upsertShipment(tx, o, { deliveredAt, ...(shipRow?.customsStatus === "held" ? {} : { customsStatus: "cleared" as const }) }, ctx, at);
     await tx.update(orders).set({ deliveredAt, updatedAt: at }).where(eq(orders.id, o.id));
+    await tx.update(purchaseOrders).set({ status: "completed", updatedAt: at }).where(and(eq(purchaseOrders.orderId, o.id), isNull(purchaseOrders.deletedAt), inArray(purchaseOrders.status, ["draft", "issued", "in_production"])));
     await logActivity(tx, { orgId: o.orgId, entityType: "order", entityId: o.id, type: "shipment_updated", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { ref: o.ref, text: `Delivered ${formatDate(p.deliveredAt)}` } });
     if (o.state === "eu_port_customs" || o.state === "departed_origin") {
       await transitionOrder(o.id, "delivered", ctx, { tx, at: new Date(at.getTime() + 1000), notifyClient: false, payload: { deliveredAt: p.deliveredAt, text: `Delivered ${formatDate(p.deliveredAt)} — please confirm in the app` } });
@@ -888,9 +903,12 @@ export async function publishOrderDocument(ctx: Ctx, orderId: string, documentId
     let transitioned: State | null = null;
     if (pub.blocked) return { orderRef: o.ref, transitioned, pub };
     if (d.kind === "pi" && d.entityId === o.id && o.state === "order_confirmed") {
-      await transitionOrder(o.id, "awaiting_deposit", ctx, { tx, at: new Date(at.getTime() + 1000), notifyClient: false });
+      // QA-04: the deposit/fee become due only now that the client has the invoice
+      const dueOn = toIsoDate(addWorkingDays(at, 5));
+      await tx.update(payments).set({ dueOn, updatedAt: at }).where(and(eq(payments.orderId, o.id), inArray(payments.kind, ["deposit", "fee"]), eq(payments.status, "pending"), isNull(payments.dueOn), isNull(payments.deletedAt)));
       const due = await tx.select().from(payments).where(and(eq(payments.orderId, o.id), inArray(payments.kind, ["deposit", "fee"]), eq(payments.status, "pending"), isNull(payments.deletedAt)));
       const dep = due.find((p) => p.kind === "deposit"), fee = due.find((p) => p.kind === "fee");
+      await transitionOrder(o.id, "awaiting_deposit", ctx, { tx, at: new Date(at.getTime() + 1000), notifyClient: false, payload: { feed: true, text: `Invoice ${o.piNumber ?? ""} is ready — deposit${fee ? " and fee" : ""} due ${formatDate(dep?.dueOn ?? dueOn)}`.replace("Invoice  is", "Your invoice is") } });
       const subject = `Payment due — deposit ${dep ? formatMoney({ minor: dep.amountMinor, currency: dep.currency }) : "—"}${fee ? ` + fee ${formatMoney({ minor: fee.amountMinor, currency: fee.currency })}` : ""} for ${o.ref}`;
       await notifyClients(tx, o, "client_payment_due", subject, { kind: "deposit", dueOn: dep?.dueOn ?? null, amounts: due.map((p) => ({ kind: p.kind, amount: formatMoney({ minor: p.amountMinor, currency: p.currency }) })), url: `/app/orders/${o.ref}#payments` }, "deposit", at);
       transitioned = "awaiting_deposit";

@@ -65,7 +65,7 @@ export async function inviteUser(ctx: Ctx | null, raw: InviteUserInput): Promise
     await logActivity(tx, { orgId: u.orgId, entityType: "organization", entityId: u.orgId, type: "user_invited", actorId: ctx?.userId ?? null, actorName: ctx?.name ?? "System", visibility: "internal", at, payload: { email: input.email, name: input.name, role: input.role } });
     await enqueue({
       userId: u.id, toEmail: u.email, template: "auth_invite", subject: "You've been invited to Influensia",
-      payload: { name: input.name, url: `/invite/${inviteToken}`, expiresAt: expires.toISOString() },
+      payload: { name: input.name, url: `${(process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "")}/invite/${inviteToken}`, path: `/invite/${inviteToken}`, expiresAt: expires.toISOString() },
       idempotencyKey: `auth_invite:${u.id}:${at.toISOString()}`, at,
     }, tx);
   });

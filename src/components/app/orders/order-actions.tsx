@@ -29,7 +29,7 @@ function useClientAct() {
   const act = React.useCallback(<T,>(fn: () => Promise<ActionResult<T>>, opts?: { success?: string; onSuccess?: (d: T) => void }) => new Promise<boolean>((resolve) => start(async () => {
     const r = await fn();
     if (r.ok) { if (opts?.success) toast.success(opts.success); opts?.onSuccess?.(r.data); router.refresh(); resolve(true); }
-    else { toast.error(ERR[r.error] ?? "Something went wrong.", r.errors ? { description: Object.values(r.errors).join(" · ") } : undefined); resolve(false); }
+    else { const field = r.errors ? Object.values(r.errors)[0] : undefined; toast.error(r.message ?? field ?? ERR[r.error] ?? "Something went wrong — please try again."); resolve(false); }
   })), [router]);
   return { act, pending };
 }

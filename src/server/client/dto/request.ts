@@ -40,6 +40,18 @@ export const ClientRequestLineDto = z.object({
   updatedAt: isoDateTime,
   canEdit: z.boolean(),
   canCancel: z.boolean(),
+  /** QA-12: truthful chip label ("Order being prepared" while offer_accepted), resolved server-side */
+  milestoneLabel: z.string(),
+  /** first time each client milestone was reached (dates under the stepper steps) */
+  milestoneDates: z.array(z.object({ milestone: MilestoneDto, at: isoDateTime }).strict()),
+  /** frozen spec as raw key/value pairs — humanise keys with the shared label map */
+  specFields: z.array(z.object({ key: z.string(), value: z.union([z.string(), z.number(), z.boolean()]) }).strict()),
+  /** QA-11: set while we owe a new price after the client asked for changes / declined / the price expired */
+  offerOutcome: z.enum(["changes_requested", "declined", "expired"]).nullable(),
+  /** QA-28: the (leak-checked) reason shown next to the "On hold" badge */
+  onHoldReason: z.string().nullable(),
+  /** QA-08: frozen spec → the client can raise a formal change request (requestSpecChangeAction) */
+  canRequestChange: z.boolean(),
 }).strict();
 export type ClientRequestLineDto = z.infer<typeof ClientRequestLineDto>;
 

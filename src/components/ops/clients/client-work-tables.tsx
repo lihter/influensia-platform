@@ -9,11 +9,10 @@ import { S } from "./strings";
 /** F-26 Requests list for this client — rows link to /ops/lines/[ref] (line-page feature). */
 export function ClientLinesTable({ rows }: { rows: ClientLineRow[] }) {
   const columns: DataTableColumn<ClientLineRow>[] = [
-    { id: "ref", accessorKey: "ref", header: S.detail.colLine.ref, meta: { sticky: true }, cell: ({ row }) => <span className="font-mono text-xs">{row.original.ref}</span> },
-    { id: "name", accessorKey: "name", header: S.detail.colLine.name, cell: ({ row }) => <PrimaryCell title={row.original.name} /> },
+    { id: "name", accessorKey: "name", header: S.detail.colLine.name, meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={row.original.ref} /> },
     { id: "qty", accessorKey: "qty", header: S.detail.colLine.qty, meta: { numeric: true }, cell: ({ row }) => (row.original.qty ? <Qty qty={row.original.qty} unit={row.original.unit} /> : "—") },
     { id: "state", accessorKey: "state", header: S.detail.colLine.state, cell: ({ row }) => <span className="inline-flex items-center gap-1.5"><StateChip state={row.original.state} stale={row.original.stale} />{row.original.exception && <ExceptionChip exception={row.original.exception} />}</span> },
-    { id: "agent", accessorKey: "agentName", header: S.detail.colLine.agent, cell: ({ row }) => row.original.agentName ?? <span className="text-faint">—</span> },
+    { id: "agent", accessorKey: "agentName", header: S.detail.colLine.agent, cell: ({ row }) => row.original.agentName ? <span className="whitespace-nowrap">{row.original.agentName}</span> : <span className="text-faint">—</span> },
     { id: "last", accessorKey: "lastChangeAt", header: S.detail.colLine.last, meta: { numeric: true }, cell: ({ row }) => <Age since={row.original.lastChangeAt} stale={row.original.stale} /> },
   ];
   return <DataTable columns={columns} data={rows} rowHref={(r) => r.href} isStale={(r) => r.stale} density="compact" data-testid="client-lines" emptyState={<EmptyState title={S.detail.linesEmpty} className="py-8" />} initialSorting={[{ id: "last", desc: true }]} />;

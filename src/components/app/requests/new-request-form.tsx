@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Link as LinkIcon, Image as ImageIcon, X, Loader2, ChevronDown, ChevronUp, AlertCircle, FileText, Upload, Check, Paperclip } from "lucide-react";
+import { Link as LinkIcon, Image as ImageIcon, X, Loader2, ChevronDown, ChevronUp, AlertCircle, FileText, Upload, Check, Paperclip, ExternalLink, Plus } from "lucide-react";
 import type { ActionResult } from "@/server/shared/http";
 import type { ClientRequestCreatedDto } from "@/server/client/dto/requests";
 import { Button } from "@/components/ui/button";
@@ -14,16 +14,30 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Eyebrow } from "@/components/shared/eyebrow";
+import { DateInput } from "@/components/ui/date-input";
 import { cn } from "@/lib/utils";
 import { extractUrls, parseLink, titleFromFilename } from "./link-parse";
 import { parseImportFile } from "./import-parse";
 import { S } from "./strings";
+import { platformOf, shortLink, parseQty, groupQty } from "../client-format";
 
 const T = S.newRequest;
 const MAX_LINES = 50;
 const MAX_IMAGES = 10;
 const IMAGE_TYPES = /^image\/(jpeg|png|webp)$/;
 const IMPORT_TYPES = /\.(csv|xlsx|tsv|txt)$/i;
+/** Same ceiling as the server (QA-13: request_lines.qty is a 32-bit integer). */
+const MAX_QTY = 10_000_000;
+const PRESETS = [100, 500, 1_000, 5_000];
+
+/** Client-side quantity check with the server's wording (AC-NEW-02, QA-13, QA-34). */
+function qtyProblem(raw: string): string | null {
+  const n = parseQty(raw);
+  if (n === null || n < 1) return T.qtyError;
+  if (!Number.isInteger(n)) return "Whole numbers only";
+  if (n > MAX_QTY) return "Quantity is too large — contact us for volumes above 10 million";
+  return null;
+}
 
 type Row = {
   key: string;
@@ -43,6 +57,17 @@ type Row = {
   reorderInterval: "none" | "monthly" | "quarterly" | "yearly";
   volume12m: string;
 };
+
+/** Running summary in the send bar: "3 products · 60,000 pcs". */
+function summaryText(rows: Row[]): string {
+  if (!rows.length) return "Paste a link or add a photo to start.";
+  const qtys = rows.map((r) => parseQty(r.qty));
+  const units = new Set(rows.map((r) => r.unit));
+  const known = qtys.filter((n): n is number => n !== null && Number.isInteger(n) && n > 0);
+  const head = `${rows.length} ${rows.length === 1 ? "product" : "products"}`;
+  if (known.length < rows.length) return `${head} · ${rows.length - known.length} without a quantity yet`;
+  return units.size === 1 ? `${head} · ${groupQty(known.reduce((a, b) => a + b, 0))} ${[...units][0]}` : head;
+}
 
 export type NewRequestAction = (fd: FormData) => Promise<ActionResult<ClientRequestCreatedDto>>;
 export type ClientOption = { id: string; name: string; country: string | null };
@@ -84,6 +109,10 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
 
   const rowsRef = React.useRef(rows);
   rowsRef.current = rows;
+  const textRef = React.useRef(text);
+  textRef.current = text;
+  const pasteTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (pasteTimer.current) clearTimeout(pasteTimer.current); }, []);
   React.useEffect(() => () => { for (const r of rowsRef.current) for (const p of r.previews) URL.revokeObjectURL(p); }, []); // revoke previews on unmount only
 
   const addRows = React.useCallback((next: Row[]) => {
@@ -104,6 +133,21 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
     if (urls.length) addRows(urls.map((u) => { const p = parseLink(u)!; return blankRow({ kind: "link", url: p.url, domain: p.domain, notDurable: p.notDurable, name: p.title }); }));
     setText(urls.length || all ? rest : value);
   }, [addRows]);
+
+  /**
+   * QA-02: links become lines while you type/paste — never on blur. A multi-character change (paste, autofill, drop)
+   * commits everything at once; a typed URL is committed after a short pause once it looks complete.
+   */
+  const onPasteAreaChange = (value: string) => {
+    if (pasteTimer.current) clearTimeout(pasteTimer.current);
+    if (value.length - textRef.current.length > 1) { commitText(value, true); return; }
+    commitText(value, false);
+    pasteTimer.current = setTimeout(() => {
+      const cur = textRef.current;
+      const last = (cur.split(/\r?\n/).pop() ?? "").trim();
+      if (/^https?:\/\/[^\s/]+\.[^\s]{2,}$/i.test(last)) commitText(cur, true);
+    }, 700);
+  };
 
   const addFiles = React.useCallback((files: FileList | File[]) => {
     const list = [...files];
@@ -148,8 +192,6 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
     }));
   };
 
-  // enabled as soon as there is a line so a click can point at the missing quantities (AC-NEW-02)
-  const canSend = rows.length > 0 && (mode === "client" || !!orgId);
 
   function submit(draft: boolean) {
     // commit whatever is still in the paste area, then validate against the combined list
@@ -161,24 +203,38 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
     run(cur, draft);
   }
 
+  function focusFirstProblem(key: string, err: { qty?: string; name?: string } | undefined) {
+    requestAnimationFrame(() => {
+      const row = document.querySelector<HTMLElement>(`[data-row-key="${key}"]`);
+      const el = row?.querySelector<HTMLInputElement>(err?.name ? "[data-testid=line-name]" : "[data-testid=line-qty]");
+      row?.scrollIntoView({ block: "center", behavior: "smooth" });
+      el?.focus({ preventScroll: true });
+    });
+  }
+
   function run(cur: Row[], draft: boolean) {
     // validate against the latest rows
     const e: typeof errors = {};
     for (const r of cur) {
-      const qty = r.qty.trim();
-      if (!/^\d+$/.test(qty) || Number(qty) < 1) e[r.key] = { ...e[r.key], qty: T.qtyError };
+      const qp = qtyProblem(r.qty);
+      if (qp) e[r.key] = { ...e[r.key], qty: qp };
       if (r.name.trim().length < 2 || r.name.trim().length > 200) e[r.key] = { ...e[r.key], name: T.nameError };
     }
     setErrors(e);
-    if (!cur.length) { setFormError(T.noLines); return; }
+    if (!cur.length) { setFormError(T.noLines); textareaRef.current?.focus(); return; }
     if (cur.length > MAX_LINES) { setFormError(T.tooManyLines); return; }
     if (mode === "ops" && !orgId) { setFormError(T.opsClientError); return; }
-    if (Object.keys(e).length) { setFormError(null); return; }
+    const bad = cur.filter((r) => e[r.key]);
+    if (bad.length) {
+      setFormError(bad.length === 1 ? "One line needs your attention — see the highlighted field." : `${bad.length} lines need your attention — see the highlighted fields.`);
+      focusFirstProblem(bad[0].key, e[bad[0].key]);
+      return;
+    }
     setFormError(null);
     const fd = new FormData();
     const payload = {
       lines: cur.map((r) => ({
-        name: r.name.trim(), qty: Number(r.qty), unit: r.unit || "pcs", links: r.url ? [r.url] : [], note: r.note.trim() || null, clientSku: r.clientSku.trim() || null,
+        name: r.name.trim(), qty: parseQty(r.qty) ?? 0, unit: r.unit || "pcs", links: r.url ? [r.url] : [], note: r.note.trim() || null, clientSku: r.clientSku.trim() || null,
         targetDelivery: r.targetDelivery || null, reorderInterval: r.reorderInterval === "none" ? null : r.reorderInterval, volume12m: r.volume12m.trim() ? Number(r.volume12m) : null, fileCount: r.files.length,
       })),
       note: note.trim() || null, targetDelivery: targetDelivery || null, destination: destination.trim() || null, incotermWanted: incoterm || null, draft, source,
@@ -196,9 +252,11 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
           const next: typeof errors = {};
           for (const [path, msg] of Object.entries(r.errors)) { const m = path.match(/^lines\.(\d+)\.(qty|name)/); if (m && cur[Number(m[1])]) next[cur[Number(m[1])].key] = { ...next[cur[Number(m[1])].key], [m[2]]: msg }; }
           setErrors(next);
-          msg = Object.keys(next).length ? T.qtyError : Object.values(r.errors)[0] ?? T.error;
-          setFormError(Object.keys(next).length ? null : msg);
-        } else { msg = r.error === "E_FORBIDDEN" ? "You are not allowed to do that." : T.error; setFormError(msg); }
+          const firstBad = cur.find((x) => next[x.key]);
+          msg = firstBad ? (next[firstBad.key].qty ?? next[firstBad.key].name ?? T.error) : r.message ?? Object.values(r.errors)[0] ?? T.error;
+          setFormError(firstBad ? "Please check the highlighted field." : msg);
+          if (firstBad) focusFirstProblem(firstBad.key, next[firstBad.key]);
+        } else { msg = r.message ?? (r.error === "E_FORBIDDEN" ? "You are not allowed to do that." : T.error); setFormError(msg); }
         toast.error(msg);
         return;
       }
@@ -227,10 +285,10 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
 
   const actions = (
     <div className="flex items-center gap-2 max-sm:[&>*]:flex-1">
-      <Button type="button" variant="outline" size="lg" disabled={pending || rows.length === 0} onClick={() => submit(true)} data-testid="save-draft">
+      <Button type="button" variant="outline" size="lg" disabled={pending} onClick={() => submit(true)} data-testid="save-draft">
         {pending && submitting === "draft" && <Loader2 className="animate-spin" />}{T.saveDraft}
       </Button>
-      <Button type="button" size="lg" disabled={pending || !canSend} onClick={() => submit(false)} data-testid="send-request">
+      <Button type="button" size="lg" disabled={pending} onClick={() => submit(false)} data-testid="send-request">
         {pending && submitting === "send" && <Loader2 className="animate-spin" />}{pending && submitting === "send" ? T.sending : T.send}
       </Button>
     </div>
@@ -256,7 +314,7 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
             <Textarea id="wa" rows={2} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder={T.opsWhatsappPlaceholder} data-testid="whatsapp-note" />
             <div className="flex items-center gap-2">
               <Label htmlFor="wad" className="text-xs">{T.opsWhatsappDate}</Label>
-              <Input id="wad" type="date" className="h-8 w-44" value={whatsappDate} onChange={(e) => setWhatsappDate(e.target.value)} />
+              <DateInput id="wad" className="h-8" wrapperClassName="w-44" value={whatsappDate} onChange={(e) => setWhatsappDate(e.target.value)} />
             </div>
           </div>
         </div>
@@ -269,31 +327,36 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
         </TabsList>
         <TabsContent value="paste" className="pt-4">
           <div
-            className={cn("relative min-h-[140px] rounded-xl border border-dashed bg-card p-6 text-center transition-colors", dragging ? "border-green-600 bg-green-50" : "border-input")}
+            className={cn("relative rounded-xl border border-dashed bg-card text-center transition-[min-height,background-color] duration-[120ms]", rows.length ? "min-h-14 px-4 py-3" : "min-h-[140px] p-6", dragging ? "border-green-600 bg-green-50" : "border-input")}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files); const t = e.dataTransfer.getData("text"); if (t) commitText(t + "\n", true); }}
             onClick={() => textareaRef.current?.focus()}
             data-testid="drop-zone"
+            data-compact={rows.length > 0 || undefined}
           >
-            <div className="pointer-events-none flex flex-col items-center gap-1.5" aria-hidden={text.length > 0}>
-              <div className="flex items-center gap-2 text-muted-foreground"><LinkIcon className="size-5" strokeWidth={1.75} /><ImageIcon className="size-5" strokeWidth={1.75} /></div>
-              <p className={cn("text-[15px] font-medium text-foreground", text && "sr-only")}>{T.dropTitle}</p>
-              <p className={cn("text-sm text-muted-foreground", text && "sr-only")}>{T.dropHint}</p>
-            </div>
+            {rows.length === 0 ? (
+              <div className="pointer-events-none flex flex-col items-center gap-1.5" aria-hidden={text.length > 0}>
+                <div className="flex items-center gap-2 text-muted-foreground"><LinkIcon className="size-5" strokeWidth={1.75} /><ImageIcon className="size-5" strokeWidth={1.75} /></div>
+                <p className={cn("text-[15px] font-medium text-foreground", text && "sr-only")}>{T.dropTitle}</p>
+                <p className={cn("text-sm text-muted-foreground", text && "sr-only")}>{T.dropHint}</p>
+              </div>
+            ) : (
+              <p className={cn("pointer-events-none flex h-8 items-center gap-2 pr-32 text-left text-sm text-muted-foreground", text && "invisible")} aria-hidden><Plus className="size-4" />Paste more links or drop photos</p>
+            )}
             <textarea
               ref={textareaRef}
               aria-label={T.dropTitle}
               placeholder={text ? "" : T.dropHint}
-              className="absolute inset-0 size-full resize-none rounded-xl bg-transparent px-6 py-6 font-mono text-sm text-transparent caret-foreground outline-none placeholder:text-transparent focus-visible:ring-2 focus-visible:ring-ring [&:not(:placeholder-shown)]:bg-card [&:not(:placeholder-shown)]:text-foreground"
+              className={cn("absolute inset-0 size-full resize-none rounded-xl bg-transparent font-mono text-sm text-transparent caret-foreground outline-none placeholder:text-transparent focus-visible:ring-2 focus-visible:ring-ring [&:not(:placeholder-shown)]:bg-card [&:not(:placeholder-shown)]:text-foreground", rows.length ? "px-4 py-4 pr-36" : "px-6 py-6")}
               value={text}
-              onChange={(e) => commitText(e.target.value, false)}
+              onChange={(e) => onPasteAreaChange(e.target.value)}
               onPaste={(e) => { const t = e.clipboardData.getData("text"); if (t) { e.preventDefault(); commitText(text + t + "\n", true); } }}
               onBlur={() => commitText(text, true)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitText(text, true); } }}
               data-testid="paste-area"
             />
-            <div className="relative mt-3 flex justify-center">
+            <div className={cn("relative flex justify-center", rows.length ? "absolute top-1/2 right-3 -translate-y-1/2" : "mt-3")}>
               <Button type="button" variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); fileInput.current?.click(); }}><ImageIcon />{T.dropPhotos}</Button>
               <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp,.csv,.xlsx" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} data-testid="photo-input" />
             </div>
@@ -330,52 +393,67 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
           <ul className="sheet" data-testid="lines">
             {rows.map((r, i) => {
               const err = errors[r.key];
+              const platform = r.url ? platformOf(r.url) : null;
+              const q = parseQty(r.qty);
               return (
-                <li key={r.key} className="sheet-row flex flex-col gap-3 animate-in fade-in duration-[120ms]" data-testid="line-row">
+                <li key={r.key} className="sheet-row flex flex-col gap-3 animate-in fade-in duration-[120ms]" data-testid="line-row" data-row-key={r.key}>
                   <div className="flex items-start gap-3">
-                    <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-section-alt text-muted-foreground">
-                      {r.previews[0] ? <Image src={r.previews[0]} alt="" width={40} height={40} unoptimized className="size-10 object-cover" /> : r.kind === "file" || r.kind === "text" ? <FileText className="size-4" /> : r.url ? <LinkIcon className="size-4" /> : <ImageIcon className="size-4" />}
-                    </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                         <span className="font-mono">{String(i + 1).padStart(2, "0")}</span>
-                        {r.url ? <a href={r.url} target="_blank" rel="noreferrer" className="block max-w-full truncate font-mono hover:underline" title={r.url}>{r.domain}{r.url.replace(/^https?:\/\/[^/]+/, "").slice(0, 60)}</a> : <span>{r.kind === "file" ? T.file : r.kind === "text" ? T.imported : T.photo}{r.files[0] ? ` · ${r.files[0].name}` : ""}</span>}
+                        {r.previews[0] && <Image src={r.previews[0]} alt="" width={24} height={24} unoptimized className="size-6 rounded-sm object-cover" />}
+                        {platform ? (
+                          <>
+                            <span className={cn("inline-flex h-5 shrink-0 items-center rounded-sm px-1.5 text-2xs font-semibold", platform.key === "other" ? "bg-section-alt text-ink-2" : "bg-foreground text-background")} data-testid="platform-badge" data-platform={platform.key}>{platform.label}</span>
+                            <a href={r.url!} target="_blank" rel="noreferrer" className="inline-flex min-w-0 max-w-full items-center gap-1 font-mono hover:text-foreground hover:underline" title={r.url!}><span className="truncate">{shortLink(r.url!)}</span><ExternalLink className="size-3 shrink-0" /></a>
+                          </>
+                        ) : <span className="inline-flex items-center gap-1">{r.kind === "file" || r.kind === "text" ? <FileText className="size-3" /> : <ImageIcon className="size-3" />}{r.kind === "file" ? T.file : r.kind === "text" ? T.imported : T.photo}{r.files[0] ? <span className="truncate"> · {r.files[0].name}</span> : ""}</span>}
                         {r.notDurable && <span className="inline-flex items-center gap-1 text-warning" title={T.linkMayExpire}><AlertCircle className="size-3" />{T.linkMayExpire}</span>}
                         {r.files.length > 1 && <span>· {r.files.length} photos</span>}
                       </div>
-                      <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto]">
-                        <div>
+                      <div className="mt-1.5 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                        <div className="min-w-0">
                           <Input aria-label={T.lineName} value={r.name} onChange={(e) => update(r.key, { name: e.target.value })} aria-invalid={!!err?.name} className="h-10 text-sm" data-testid="line-name" />
-                          {err?.name && <p className="mt-1 flex items-center gap-1 text-xs text-danger"><AlertCircle className="size-3" />{err.name}</p>}
+                          {err?.name && <p className="mt-1 flex items-center gap-1 text-xs text-danger" role="alert"><AlertCircle className="size-3" />{err.name}</p>}
                         </div>
                         <div>
                           <div className="flex items-center">
-                            <Input aria-label={T.lineQty} inputMode="numeric" placeholder="Qty" value={r.qty} onChange={(e) => update(r.key, { qty: e.target.value })} aria-invalid={!!err?.qty} className="h-10 w-28 rounded-r-none text-right font-mono text-sm tabular-nums" data-testid="line-qty" />
+                            <Input aria-label={T.lineQty} inputMode="numeric" placeholder="Quantity" value={r.qty}
+                              onChange={(e) => update(r.key, { qty: e.target.value })}
+                              onBlur={(e) => { const n = parseQty(e.target.value); if (n !== null && Number.isInteger(n) && n > 0) update(r.key, { qty: groupQty(n) }); }}
+                              aria-invalid={!!err?.qty} className="h-10 w-full rounded-r-none text-right font-mono text-sm tabular-nums sm:w-32" data-testid="line-qty" />
                             <Select value={r.unit} onValueChange={(v) => update(r.key, { unit: v })}>
-                              <SelectTrigger aria-label="Unit" className="h-10 w-[4.5rem] rounded-l-none border-l-0 bg-card font-mono text-xs" data-size="default"><SelectValue /></SelectTrigger>
+                              <SelectTrigger aria-label="Unit" className="h-10 w-[4.75rem] shrink-0 rounded-l-none border-l-0 bg-card font-mono text-xs" data-size="default"><SelectValue /></SelectTrigger>
                               <SelectContent>{["pcs", "set", "pair", "bag", "pack", "m"].map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
                             </Select>
                           </div>
-                          {err?.qty && <p className="mt-1 flex items-center gap-1 text-xs text-danger" data-testid="qty-error"><AlertCircle className="size-3" />{err.qty}</p>}
+                          {err?.qty && <p className="mt-1 flex items-center gap-1 text-xs text-danger" data-testid="qty-error" role="alert"><AlertCircle className="size-3" />{err.qty}</p>}
                         </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Quick quantity">
+                        {PRESETS.map((n) => (
+                          <button key={n} type="button" onClick={() => update(r.key, { qty: groupQty(n) })} aria-pressed={q === n} data-testid="qty-preset"
+                            className={cn("h-7 rounded-full border px-2.5 font-mono text-xs transition-colors duration-[120ms]", q === n ? "border-green-600 bg-green-50 text-green-700" : "border-border bg-card text-ink-2 hover:bg-surface-sunken")}>{groupQty(n)}</button>
+                        ))}
+                        <span className="text-xs text-muted-foreground">or type any quantity</span>
                       </div>
                     </div>
                     <Button type="button" variant="ghost" size="icon-sm" aria-label={T.remove} onClick={() => remove(r.key)} data-testid="remove-line"><X /></Button>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 pl-[52px]">
-                    <button type="button" className="link inline-flex items-center gap-1 text-xs" onClick={() => update(r.key, { more: !r.more })} data-testid="line-more">{r.more ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}{r.more ? T.less : T.more}</button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button type="button" className="link inline-flex items-center gap-1 text-xs" onClick={() => update(r.key, { more: !r.more })} data-testid="line-more" aria-expanded={r.more}>{r.more ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}{r.more ? "Hide details" : "Details (note, reference, date)"}</button>
                     {r.kind !== "file" && (
                       <label className="link inline-flex cursor-pointer items-center gap-1 text-xs"><ImageIcon className="size-3" />{T.dropPhotos}<input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => { addPhotosToRow(r.key, e.target.files); e.target.value = ""; }} /></label>
                     )}
                   </div>
                   {r.more && (
-                    <div className="grid gap-3 pl-[52px] sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <div className="flex flex-col gap-1.5 sm:col-span-2">
                         <Label htmlFor={`note-${r.key}`}>{T.lineNote}</Label>
                         <Textarea id={`note-${r.key}`} rows={2} maxLength={2000} value={r.note} onChange={(e) => update(r.key, { note: e.target.value })} placeholder={T.lineNotePlaceholder} />
                       </div>
                       <div className="flex flex-col gap-1.5"><Label htmlFor={`sku-${r.key}`}>{T.clientSku}</Label><Input id={`sku-${r.key}`} value={r.clientSku} onChange={(e) => update(r.key, { clientSku: e.target.value })} className="font-mono text-sm" /></div>
-                      <div className="flex flex-col gap-1.5"><Label htmlFor={`td-${r.key}`}>{T.targetDelivery}</Label><Input id={`td-${r.key}`} type="date" value={r.targetDelivery} onChange={(e) => update(r.key, { targetDelivery: e.target.value })} /></div>
+                      <div className="flex flex-col gap-1.5"><Label htmlFor={`td-${r.key}`}>{T.targetDelivery}</Label><DateInput id={`td-${r.key}`} value={r.targetDelivery} onChange={(e) => update(r.key, { targetDelivery: e.target.value })} /></div>
                       <div className="flex flex-col gap-1.5">
                         <Label htmlFor={`ri-${r.key}`}>{T.reorder}</Label>
                         <Select value={r.reorderInterval} onValueChange={(v) => update(r.key, { reorderInterval: v as Row["reorderInterval"] })}>
@@ -387,7 +465,7 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
                     </div>
                   )}
                   {r.previews.length > 1 && (
-                    <div className="flex flex-wrap gap-1.5 pl-[52px]">{r.previews.map((p) => <Image key={p} src={p} alt="" width={48} height={48} unoptimized className="size-12 rounded-sm object-cover" />)}</div>
+                    <div className="flex flex-wrap gap-1.5">{r.previews.map((pv) => <Image key={pv} src={pv} alt="" width={48} height={48} unoptimized className="size-12 rounded-sm object-cover" />)}</div>
                   )}
                 </li>
               );
@@ -401,10 +479,10 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
         <Textarea id="req-note" rows={3} maxLength={4000} value={note} onChange={(e) => setNote(e.target.value)} placeholder={T.notePlaceholder} data-testid="request-note" />
       </div>
       <div>
-        <button type="button" className="link inline-flex items-center gap-1 text-sm" onClick={() => setShowRequestMore((v) => !v)}>{showRequestMore ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}{showRequestMore ? T.less : T.more}</button>
+        <button type="button" className="link inline-flex items-center gap-1 text-sm" onClick={() => setShowRequestMore((v) => !v)} aria-expanded={showRequestMore}>{showRequestMore ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}Delivery &amp; deadline</button>
         {showRequestMore && (
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div className="flex flex-col gap-1.5"><Label htmlFor="req-td">{T.requestDelivery}</Label><Input id="req-td" type="date" value={targetDelivery} onChange={(e) => setTargetDelivery(e.target.value)} data-testid="target-delivery" /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="req-td">{T.requestDelivery}</Label><DateInput id="req-td" value={targetDelivery} onChange={(e) => setTargetDelivery(e.target.value)} data-testid="target-delivery" /></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="req-dest">{T.destination}</Label><Input id="req-dest" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="PL" /></div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="req-inc">{T.incoterm}</Label>
@@ -414,9 +492,13 @@ export function NewRequestForm({ mode, action, clients, defaultDestination, defa
         )}
       </div>
 
-      {formError && <p className="flex items-center gap-1.5 text-sm text-danger" role="alert" data-testid="form-error"><AlertCircle className="size-4" />{formError}</p>}
-
-      <div className="sticky bottom-0 z-10 -mx-4 flex justify-end border-t border-border bg-background/95 p-4 backdrop-blur-sm sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">{actions}</div>
+      <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t border-border bg-background/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:rounded-t-xl sm:px-0" data-testid="send-bar">
+        <div className="min-w-0 text-sm">
+          {formError ? <p className="flex items-center gap-1.5 text-danger" role="alert" data-testid="form-error"><AlertCircle className="size-4 shrink-0" />{formError}</p>
+            : <p className="font-mono text-xs text-ink-2" data-testid="send-summary">{summaryText(rows)}</p>}
+        </div>
+        {actions}
+      </div>
     </div>
   );
 }

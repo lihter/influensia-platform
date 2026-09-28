@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /** F-01: email + password, generic error (no enumeration), role redirect via `/` (or same-door `?next=`). */
-export function LoginForm({ next }: { next: string | null }) {
+export function LoginForm({ next, notice }: { next: string | null; notice?: string | null }) {
   const t = useTranslations("auth.login");
   const router = useRouter();
   const [error, setError] = React.useState<string | null>(null);
@@ -33,6 +33,7 @@ export function LoginForm({ next }: { next: string | null }) {
         <h1 className="text-xl font-semibold">{t("title")}</h1>
         <p className="mt-1 text-sm text-ink-2">{t("subtitle")}</p>
       </div>
+      {notice && <p className="rounded-lg border border-success-border bg-success-wash px-3 py-2 text-sm text-success" data-testid="login-notice">{notice}</p>}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="email" className="text-xs font-medium text-ink-2">{t("email")}</Label>
         <Input id="email" name="email" type="email" autoComplete="email" required className="h-10" />

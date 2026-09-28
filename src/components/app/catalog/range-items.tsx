@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { label, unitLabel } from "@/lib/labels";
+import { perUnit } from "../client-format";
 
 type Action = (i: { rangeId: string; items: { itemId: string; qty: number }[]; note?: string | null }) => Promise<ActionResult<ClientRangeRequestDto>>;
 
@@ -56,26 +58,27 @@ export function RangeItems({ range, action }: { range: ClientRangeDto; action: A
                 </span>
               </label>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">{it.name}</p>
+                <p className="text-sm font-medium text-foreground [overflow-wrap:anywhere]">{it.name}</p>
+                <p className="text-xs text-ink-2 sm:hidden">{it.price ? <>from <UnitPrice minorE2={it.price.minorE2} currency={it.price.currency} unit={perUnit(it.unit)} className="text-xs" /> · to be confirmed</> : "price on request"}</p>
                 <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                   {it.moqLabel && <span className="font-mono">{it.moqLabel}</span>}
-                  {it.madeHere === true && <Badge variant="success" className="normal-case tracking-normal"><Check className="size-3" />made here</Badge>}
-                  {it.madeHere === false && <Badge variant="neutral" className="normal-case tracking-normal">sourced by the factory</Badge>}
+                  {it.madeHere === true && <Badge variant="success" className="normal-case tracking-normal"><Check className="size-3" />{label("provenance", "made_here")}</Badge>}
+                  {it.madeHere === false && <Badge variant="neutral" className="normal-case tracking-normal">{label("provenance", "sourced_by_them")}</Badge>}
                   {it.note && <span>{it.note}</span>}
                 </p>
               </div>
-              <div className="text-right text-sm">
-                {it.price ? <><span className="text-xs text-muted-foreground">from </span><UnitPrice minorE2={it.price.minorE2} currency={it.price.currency} unit={it.unit} /><p className="text-2xs text-muted-foreground">to be confirmed</p></> : <span className="text-xs text-muted-foreground">price on request</span>}
+              <div className="hidden text-right text-sm sm:block">
+                {it.price ? <><span className="text-xs text-muted-foreground">from </span><UnitPrice minorE2={it.price.minorE2} currency={it.price.currency} unit={perUnit(it.unit)} /><p className="text-2xs text-muted-foreground">to be confirmed</p></> : <span className="text-xs text-muted-foreground">price on request</span>}
               </div>
-              <div className={cn("relative w-full sm:w-36", !on && "invisible")}>
+              <div className={cn("relative w-full sm:w-36", !on && "max-sm:hidden sm:invisible")}>
                 <Input inputMode="numeric" value={sel[it.id] ?? ""} onChange={(e) => setSel((s) => ({ ...s, [it.id]: e.target.value.replace(/[^\d]/g, "") }))} className="h-9 pr-12 text-right font-mono" aria-label={`Quantity for ${it.name}`} />
-                <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-xs text-muted-foreground">{it.unit}</span>
+                <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-xs text-muted-foreground">{unitLabel(it.unit)}</span>
               </div>
             </li>
           );
         })}
       </ul>
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 p-4 backdrop-blur-sm lg:static lg:rounded-xl lg:border lg:bg-card lg:p-5" data-testid="range-request-bar">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm lg:static lg:rounded-xl lg:border lg:bg-card lg:p-5" data-testid="range-request-bar">
         <div className="mx-auto flex max-w-[72rem] flex-col gap-3 sm:flex-row sm:items-start">
           <div className="min-w-0 flex-1">
             <p className="text-sm text-ink-2"><span className="font-mono font-medium text-foreground">{count}</span> {count === 1 ? "item" : "items"} selected{count > 0 && <> · {Object.entries(sel).map(([id, q]) => { const it = range.items.find((x) => x.id === id); return it && q ? `${formatQty(Number(q))} × ${it.name}` : null; }).filter(Boolean).slice(0, 3).join(", ")}{count > 3 ? "…" : ""}</>}</p>

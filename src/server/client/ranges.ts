@@ -8,11 +8,12 @@
  * by the shared `createRangeRequest` helper, which returns nothing supplier-shaped.
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { defaultAgentFor } from "@/server/shared/default-agent";
 import { createRangeRequest } from "@/server/shared/range-request";
 import { clientDownloadUrl } from "./documents";
 import { uuidv7 } from "uuidv7";
 import { getDb } from "@/db";
-import { factoryRanges, factoryRangeItems, files, requests, requestLines, orders, orderLines } from "@/db/schema/app";
+import { factoryRanges, factoryRangeItems, files, requests, requestLines, orders, orderLines, organizations } from "@/db/schema/app";
 import { type Ctx, isClient, Forbidden, NotFound } from "@/server/shared/authorize";
 import { logActivity } from "@/server/shared/activity";
 import { enqueue } from "@/server/shared/outbox";
@@ -141,6 +142,8 @@ export async function requestRangeItems(ctx: Ctx, input: { rangeId: string; item
   const lineRefs: string[] = [];
   const userNote = input.note?.trim() || null;
   await db.transaction(async (tx) => {
+    // QA-10: range lines get an owner (the agent who works this factory for the client, else the client's last agent)
+    const agent = await defaultAgentFor(tx, { orgId: ctx.orgId, rangeId: r.id });
     await tx.insert(requests).values({ id: requestId, ref: requestRef, orgId: ctx.orgId, source: "portal", status: "active", note: [`From Factory ${label} range`, userNote].filter(Boolean).join(" — "), submittedAt: at, createdBy: ctx.userId, createdAt: at, updatedAt: at });
     await logActivity(tx, { orgId: ctx.orgId, entityType: "request", entityId: requestId, type: "request_submitted", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: requestRef, lines: items.length, factoryLabel: label } });
     for (const [idx, it] of items.entries()) {
@@ -150,15 +153,17 @@ export async function requestRangeItems(ctx: Ctx, input: { rangeId: string; item
       const qty = Math.max(1, Math.round(wanted.get(it.id) ?? it.moq ?? 1));
       await tx.insert(requestLines).values({
         id: lineId, requestId, orgId: ctx.orgId, lineNo: idx + 1, lineRef: ref, productId: it.productId, name: it.name, qtyFirst: qty, unit: it.unit, customisation: userNote,
-        state: "negotiating", milestone: "finding_factory", fromRangeId: r.id, sampleRequired: true, lastStateChangeAt: at, createdBy: ctx.userId, createdAt: at, updatedAt: at,
+        state: "negotiating", milestone: "finding_factory", fromRangeId: r.id, sampleRequired: true, assignedAgentId: agent?.id ?? null, lastStateChangeAt: at, createdBy: ctx.userId, createdAt: at, updatedAt: at,
       });
+      if (agent) await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "line_assigned", actorId: null, actorName: "System", visibility: "internal", at, payload: { ref, agentId: agent.id, agentName: agent.name, reason: "factory range request" } });
       // participation `selected` for the range's factory + selected_participation_id (supplier schema → shared helper)
       await createRangeRequest(tx, ctx, { rangeId: r.id, lineId, lineRef: ref, factoryLabel: label, at });
       await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "line_created", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref, name: it.name, qty, unit: it.unit, factoryLabel: label, text: `Requested from Factory ${label} — ${it.name}` } });
-      await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "state_changed", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref, from: "draft", to: "negotiating", milestone: "finding_factory", milestoneChanged: true, feed: isFeedState("negotiating"), note: null, factoryLabel: label } });
+      await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "state_changed", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref, from: "draft", to: "negotiating", milestone: "finding_factory", milestoneChanged: true, feed: isFeedState("negotiating"), note: null, factoryLabel: label, agentName: agent?.name ?? null } });
     }
+    const [orgRow] = await tx.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, ctx.orgId)).limit(1);
     for (const u of await opsUsers(tx)) {
-      await enqueue({ userId: u.id, toEmail: u.email, template: "ops_new_request", subject: `Range request ${requestRef} (${items.length} lines)`, entityRef: requestRef, payload: { ref: requestRef, lines: lineRefs, rangeRef: r.ref, url: `/ops/requests/${requestRef}` }, idempotencyKey: `ops_new_request:${requestId}:${u.id}`, at }, tx);
+      await enqueue({ userId: u.id, toEmail: u.email, template: "ops_new_request", subject: `Range request ${requestRef} from ${orgRow?.name ?? "client"} (${items.length} ${items.length === 1 ? "line" : "lines"})`, entityRef: requestRef, payload: { ref: requestRef, lines: lineRefs, rangeRef: r.ref, url: `/ops/requests/${requestRef}` }, idempotencyKey: `ops_new_request:${requestId}:${u.id}`, at }, tx);
     }
     await enqueue({ userId: ctx.userId, toEmail: ctx.email, template: "client_request_received", subject: `We received your request ${requestRef}`, entityRef: requestRef, payload: { ref: requestRef, lines: lineRefs, factoryLabel: label, url: `/app/requests/${requestRef}` }, idempotencyKey: `client_request_received:${requestId}:${ctx.userId}`, at }, tx);
   });

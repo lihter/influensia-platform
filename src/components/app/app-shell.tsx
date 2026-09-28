@@ -9,8 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-
-const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+import { clientInitials } from "./client-format";
 
 /**
  * DESIGN §4.1 — client top bar: wordmark, three links with a green underline active state, black "New request", avatar menu.
@@ -24,7 +23,7 @@ export function AppShell({ user, children }: { user: { name: string; email: stri
   const links = [
     { href: "/app", label: t("dashboard"), active: pathname === "/app" },
     { href: "/app/requests", label: t("requests"), active: pathname.startsWith("/app/requests") || pathname.startsWith("/app/lines") || pathname.startsWith("/app/orders") || pathname.startsWith("/app/offers") || pathname.startsWith("/app/samples") },
-    { href: "/app/catalog", label: t("catalog"), active: pathname.startsWith("/app/catalog") },
+    { href: "/app/catalog", label: t("catalog"), active: pathname.startsWith("/app/catalog") || pathname.startsWith("/app/ranges") },
   ];
   return (
     <div className="min-h-dvh bg-background">
@@ -60,7 +59,7 @@ export function AppShell({ user, children }: { user: { name: string; email: stri
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" aria-label={t("account")}>
-                  <Avatar className="size-8"><AvatarFallback className="bg-section-alt text-2xs font-semibold text-ink-2">{initials(user.name)}</AvatarFallback></Avatar>
+                  <Avatar className="size-8"><AvatarFallback className="bg-section-alt text-2xs font-semibold text-ink-2">{clientInitials(user.name)}</AvatarFallback></Avatar>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -76,7 +75,7 @@ export function AppShell({ user, children }: { user: { name: string; email: stri
           </div>
         </div>
       </header>
-      <main id="main" className="mx-auto w-full max-w-[72rem] px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+      <main id="main" className="mx-auto w-full max-w-[72rem] px-4 pb-16 sm:px-6">{children}</main>
     </div>
   );
 }

@@ -23,10 +23,10 @@ export function TimelineSection({ d }: { d: OpsOrderDetail }) {
     <OrderSection id="timeline" number={8} title="Timeline" count={openQuestions} action={<span className="inline-flex gap-2"><NoteSheet orderId={o.id} orderRef={o.ref} visibility="internal" /><NoteSheet orderId={o.id} orderRef={o.ref} visibility="client" /><WaSheet orderId={o.id} orderRef={o.ref} /></span>}>
       <div className="mb-4 flex flex-wrap gap-1.5" role="tablist" aria-label="Filter">
         {([["all", "All"], ["milestones", "Milestones"], ["notes", "Notes"], ["whatsapp", "WhatsApp"], ["questions", "Client questions"]] as [Filter, string][]).map(([k, l]) => (
-          <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)} className={cn("h-7 rounded-full border px-2.5 text-xs font-medium transition-colors", filter === k ? "border-foreground bg-foreground text-white" : "border-border bg-card text-ink-2 hover:bg-surface-sunken")}>{l}</button>
+          <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)} className={cn("h-7 rounded-full border px-2.5 text-xs font-medium transition-colors", filter === k ? "border-foreground bg-foreground text-background" : "border-border bg-card text-ink-2 hover:bg-surface-sunken")}>{l}</button>
         ))}
       </div>
-      <Timeline entries={entries} showVisibility emptyText="Nothing here yet." />
+      <Timeline entries={entries} showVisibility limit={15} emptyText="Nothing here yet." />
     </OrderSection>
   );
 }
@@ -35,7 +35,7 @@ function NoteSheet({ orderId, orderRef, visibility }: { orderId: string; orderRe
   const { act } = useAct();
   const client = visibility === "client";
   return (
-    <FormShell trigger={<Button size="sm" variant={client ? "default" : "outline"} data-testid={client ? "post-update" : "post-note"}>{client ? "Client update" : "Internal note"}</Button>} eyebrow={orderRef} title={client ? "Post a client-visible update" : "Internal note"} description={client ? "Leak-checked before it is saved; the client is emailed." : "Only the team sees this."} submitLabel={client ? "Post update" : "Save note"}
+    <FormShell trigger={<Button size="sm" variant="outline" data-testid={client ? "post-update" : "post-note"}>{client ? "Client update" : "Internal note"}</Button>} eyebrow={orderRef} title={client ? "Post a client-visible update" : "Internal note"} description={client ? "Leak-checked before it is saved; the client is emailed." : "Only the team sees this."} submitLabel={client ? "Post update" : "Save note"}
       onSubmit={async (e) => { const f = fd(e); return act(() => postNoteAction({ orderId, body: str(f, "body"), visibility }), { success: client ? "Update posted" : "Note saved" }); }}>
       <TextareaField name="body" label={client ? "Update" : "Note"} rows={5} required />
     </FormShell>

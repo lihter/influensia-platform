@@ -12,6 +12,8 @@ import { markPaymentPaidAction, setPaymentDueDateAction, addPaymentAction, waive
 import { OrderSection, useAct, TextField, DateField, SelectField, fd, str, opt, minor } from "../ui";
 import { PAYEE } from "../strings";
 import { today } from "@/server/shared/clock";
+import { CalendarClock, Ban, Plus } from "lucide-react";
+import { labelOptions } from "@/lib/labels";
 
 /** 02 Payments — kind · % · amount · payee · due · paid (date + reference) · Mark paid. Totals row. */
 export function PaymentsSection({ d }: { d: OpsOrderDetail }) {
@@ -22,8 +24,8 @@ export function PaymentsSection({ d }: { d: OpsOrderDetail }) {
   const paid = d.payments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amountMinor, 0);
   return (
     <OrderSection id="payments" number={2} title="Payments" count={open} action={<AddPaymentSheet orderId={o.id} orderRef={o.ref} />}>
-      <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm" data-testid="payments-table">
+      <div className="scroll-shadow-x overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[48rem] text-sm whitespace-nowrap" data-testid="payments-table">
           <thead>
             <tr className="rule-ink text-left text-2xs font-semibold uppercase tracking-[0.06em] text-foreground">
               <th className="h-9 px-3">Kind</th><th className="h-9 px-3 text-right">%</th><th className="h-9 px-3 text-right">Amount</th><th className="h-9 px-3">Payee</th><th className="h-9 px-3">Due</th><th className="h-9 px-3">Paid</th><th className="h-9 px-3 text-right"></th>
@@ -35,7 +37,7 @@ export function PaymentsSection({ d }: { d: OpsOrderDetail }) {
                 <td className="h-10 px-3 font-medium text-foreground">{tk(p.kind)}</td>
                 <td className="h-10 px-3 text-right font-mono text-[13px] text-ink-2">{p.pct !== null ? <Pct pct={p.pct} /> : "—"}</td>
                 <td className="h-10 px-3 text-right"><Money minor={p.amountMinor} currency={p.currency} strong /></td>
-                <td className="h-10 px-3"><Badge variant={p.payee === "factory" ? "outline" : "neutral"}>{PAYEE[p.payee]}</Badge></td>
+                <td className="h-10 px-3">{p.payee === "factory" ? <Badge variant="outline">{PAYEE[p.payee]}</Badge> : <span className="text-ink-2">{PAYEE[p.payee]}</span>}</td>
                 <td className="h-10 px-3 font-mono text-[13px]">{p.dueOn ? <span className={p.overdue ? "font-medium text-warning" : "text-ink-2"}><DateTime value={p.dueOn} variant="short" />{p.overdue && " · overdue"}</span> : p.status === "pending" && p.kind === "balance" ? <span className="text-muted-foreground">on QC pass</span> : <span className="text-faint">—</span>}</td>
                 <td className="h-10 px-3">
                   {p.status === "paid" ? <span className="inline-flex items-center gap-2 font-mono text-[13px]"><PaymentStatusChip status="paid" /><DateTime value={p.paidAt} variant="short" />{p.reference && <span className="text-muted-foreground">{p.reference}</span>}</span>
@@ -85,7 +87,7 @@ function MarkPaidSheet({ paymentId, kind, amount, orderRef }: { paymentId: strin
 function DueDateSheet({ paymentId, dueOn, kind, orderRef }: { paymentId: string; dueOn: string | null; kind: string; orderRef: string }) {
   const { act } = useAct();
   return (
-    <FormShell trigger={<Button size="sm" variant="ghost">Due date</Button>} eyebrow={orderRef} title={`${kind} due date`} submitLabel="Save"
+    <FormShell trigger={<Button size="sm" variant="ghost"><CalendarClock />Due date</Button>} eyebrow={orderRef} title={`${kind} due date`} submitLabel="Save"
       onSubmit={async (e) => { const f = fd(e); return act(() => setPaymentDueDateAction({ paymentId, dueOn: opt(f, "dueOn") }), { success: "Due date saved" }); }}>
       <DateField name="dueOn" label="Due on" defaultValue={dueOn} hint="Leave empty for “on QC pass” (balance)." />
     </FormShell>
@@ -94,15 +96,15 @@ function DueDateSheet({ paymentId, dueOn, kind, orderRef }: { paymentId: string;
 
 function WaiveButton({ paymentId }: { paymentId: string }) {
   const { act, pending } = useAct();
-  return <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={pending} onClick={() => { if (confirm("Waive this payment?")) void act(() => waivePaymentAction({ paymentId }), { success: "Waived" }); }}>Waive</Button>;
+  return <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={pending} onClick={() => { if (confirm("Waive this payment?")) void act(() => waivePaymentAction({ paymentId }), { success: "Waived" }); }}><Ban />Waive</Button>;
 }
 
 function AddPaymentSheet({ orderId, orderRef }: { orderId: string; orderRef: string }) {
   const { act } = useAct();
   return (
-    <FormShell trigger={<Button size="sm" variant="ghost">Add payment</Button>} eyebrow={orderRef} title="Add payment" submitLabel="Add"
+    <FormShell trigger={<Button size="sm" variant="outline"><Plus />Add payment</Button>} eyebrow={orderRef} title="Add payment" submitLabel="Add"
       onSubmit={async (e) => { const f = fd(e); return act(() => addPaymentAction({ orderId, kind: str(f, "kind") as (typeof PAYMENT_KINDS)[number], amountMinor: minor(f, "amount"), dueOn: opt(f, "dueOn"), payee: str(f, "payee") as (typeof PAYEES)[number] }), { success: "Payment added" }); }}>
-      <SelectField name="kind" label="Kind" defaultValue="sample" options={PAYMENT_KINDS.map((k) => ({ value: k, label: k[0].toUpperCase() + k.slice(1) }))} />
+      <SelectField name="kind" label="Kind" defaultValue="sample" options={labelOptions("paymentKind", PAYMENT_KINDS)} />
       <TextField name="amount" label="Amount (USD)" placeholder="45.00" required mono />
       <SelectField name="payee" label="Payee" defaultValue="agency" options={PAYEES.map((k) => ({ value: k, label: PAYEE[k] }))} />
       <DateField name="dueOn" label="Due on" />

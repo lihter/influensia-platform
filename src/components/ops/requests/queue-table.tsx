@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Loader2, Search, ChevronDown, Link as LinkIcon, Image as ImageIcon, AlertCircle, X, UserRoundPen } from "lucide-react";
+import { Loader2, Search, ChevronDown, Link as LinkIcon, Image as ImageIcon, AlertCircle, X, UserRoundPen, Globe, FileSpreadsheet, MessageCircle, BookOpen, Layers, Repeat, MoreHorizontal } from "lucide-react";
+import { initials } from "@/lib/labels";
+import { NativeSelect } from "@/components/ui/native-select";
 import type { QueueRow, Agent, ClientOrg } from "@/server/ops/requests";
 import type { ActionResult } from "@/server/shared/http";
 import { LINE_STATES } from "@/db/enums";
@@ -22,11 +24,13 @@ import { O } from "./strings";
 type Claim = (input: { lineId: string }) => Promise<ActionResult<{ lineRef: string }>>;
 type Assign = (input: { lineIds: string[]; agentId: string }) => Promise<ActionResult<{ lineRefs: string[]; agentName: string }>>;
 
-const initials = (name: string) => name.split(/\s+/).map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+const SOURCE_ICON = { portal: Globe, import: FileSpreadsheet, agent_on_behalf: MessageCircle, catalog: BookOpen, range: Layers, repeat: Repeat } as const;
 
+/** Where a line came from: plain text + 14px icon, never a chip (chips are states). Repeat/catalog/range keep their utility badge. */
 export function SourceBadge({ source }: { source: QueueRow["source"] }) {
-  const kind = source === "repeat" ? "repeat" : source === "catalog" ? "catalog" : source === "range" ? "range" : "version";
-  return <UtilityBadge kind={kind} className="normal-case tracking-normal">{O.source[source]}</UtilityBadge>;
+  const Icon = SOURCE_ICON[source] ?? Globe;
+  if (source === "repeat" || source === "catalog" || source === "range") return <UtilityBadge kind={source} className="normal-case tracking-normal"><Icon className="size-3" />{O.source[source]}</UtilityBadge>;
+  return <span className="inline-flex items-center gap-1.5 text-xs text-ink-2" data-source={source}><Icon className="size-3.5 text-muted-foreground" strokeWidth={1.75} />{O.source[source]}</span>;
 }
 
 export function AgentCell({ name, id, meId }: { name: string | null; id: string | null; meId: string }) {
@@ -81,9 +85,8 @@ export function QueueTable({ rows, agents, clients, me, scope, initial, claim, a
       enableSorting: false, meta: { width: "2.5rem" },
       cell: ({ row }) => <input type="checkbox" aria-label={`Select ${row.original.ref}`} className="size-4 accent-green-600" checked={selected.has(row.original.lineId)} onClick={(e) => e.stopPropagation()} onChange={(e) => setSelected((s) => { const n = new Set(s); if (e.target.checked) n.add(row.original.lineId); else n.delete(row.original.lineId); return n; })} data-testid="select-row" />,
     },
-    { id: "ref", accessorKey: "ref", header: O.col.ref, cell: ({ row }) => <PrimaryCell title={<span className="font-mono text-xs">{row.original.ref}</span>} sub={<span className="font-sans">{row.original.orgName}</span>} /> },
-    { id: "client", accessorKey: "orgName", header: O.col.client, meta: { className: "hidden 2xl:table-cell" } },
-    { id: "name", accessorKey: "name", header: O.col.name, cell: ({ row }) => <PrimaryCell title={row.original.name} className="max-w-[28ch]" /> },
+    { id: "ref", accessorKey: "ref", header: O.col.name, meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={row.original.ref} className="max-w-[34ch]" /> },
+    { id: "client", accessorKey: "orgName", header: O.col.client, cell: ({ row }) => <span className="block max-w-[16ch] truncate" title={row.original.orgName}>{row.original.orgName}</span> },
     { id: "qty", accessorKey: "qty", header: O.col.qty, meta: { numeric: true }, cell: ({ row }) => (row.original.qty ? <Qty qty={row.original.qty} unit={row.original.unit} /> : "—") },
     {
       id: "links", accessorFn: (r) => r.links.length + r.imagesCount, header: O.col.links, enableSorting: false,
@@ -111,7 +114,7 @@ export function QueueTable({ rows, agents, clients, me, scope, initial, claim, a
             {!r.agentId && <Button size="sm" variant="outline" disabled={b} onClick={() => doClaim(r)} data-testid="claim">{b && <Loader2 className="animate-spin" />}{O.claim}</Button>}
             {assignMenu([r.lineId], r.agentId
               ? <Button size="icon-sm" variant="ghost" disabled={b} data-testid="assign" aria-label={O.reassign} title={O.reassign}><UserRoundPen /></Button>
-              : <Button size="sm" variant="outline" disabled={b} data-testid="assign" aria-label={O.assign} title={O.assign}><ChevronDown /></Button>)}
+              : <Button size="icon-sm" variant="ghost" disabled={b} data-testid="assign" aria-label={`${O.assign} to…`} title={`${O.assign} to…`}><MoreHorizontal /></Button>)}
           </span>
         );
       },
@@ -124,17 +127,17 @@ export function QueueTable({ rows, agents, clients, me, scope, initial, claim, a
   const select = (value: string, onChange: (v: string) => void, label: string, options: { value: string; label: string }[], testId: string) => (
     <label className="inline-flex items-center gap-1.5 text-xs text-ink-2">
       {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} data-testid={testId} className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground">
+      <NativeSelect size="sm" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} data-testid={testId} className={cn(value && "border-green-600 bg-green-50")}>
         <option value="">{O.all}</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+      </NativeSelect>
     </label>
   );
 
   return (
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center gap-3 rounded-t-xl border border-b-0 border-hairline-strong bg-section-alt px-4 py-3" data-testid="queue-toolbar">
-        <div className="inline-flex h-9 items-center rounded-lg bg-muted p-[3px]" role="tablist" aria-label="Scope">
+        <div className="inline-flex h-9 items-center rounded-lg border border-hairline-strong bg-background p-[3px]" role="tablist" aria-label="Scope">
           {scopeLink("queue", O.scope.queue)}{scopeLink("unassigned", O.scope.unassigned)}{scopeLink("waiting", O.scope.waiting)}
         </div>
         <div className="relative">

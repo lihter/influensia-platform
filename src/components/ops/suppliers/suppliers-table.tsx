@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { VerdictChip, GradeCircle, ChannelIcons, VERDICT_LABEL, CHANNEL_LABEL } from "./labels";
+import { FilterToggle } from "@/components/shared/filter-toggle";
 
 const ALL = "__all__";
 
@@ -49,13 +50,21 @@ export function SuppliersTable({ rows, cities }: { rows: SupplierRow[]; cities: 
   const clear = () => { setQ(""); setVerdict(""); setGrade(""); setChannel(""); setCity(""); setDisclosedOnly(false); setOpenOnly(false); };
 
   const columns: DataTableColumn<SupplierRow>[] = [
-    { id: "ref", accessorKey: "ref", header: "Ref", meta: { sticky: true, width: "6.5rem" }, cell: ({ row }) => <span className="font-mono text-xs">{row.original.ref}</span> },
-    { id: "name", accessorKey: "legalName", header: "Legal name", cell: ({ row }) => <PrimaryCell title={row.original.legalName} sub={row.original.cnName ?? undefined} className="max-w-[36ch]" /> },
+    {
+      id: "name", accessorKey: "legalName", header: "Supplier", meta: { sticky: true },
+      cell: ({ row }) => { const r = row.original; return <PrimaryCell title={r.legalName} sub={<>{r.ref}{r.cnName && <span className="font-sans"> · {r.cnName}</span>}{r.city && <span className="font-sans"> · {r.city}{r.province ? `, ${r.province}` : ""}</span>}</>} className="max-w-[40ch]" />; },
+    },
     { id: "verdict", accessorKey: "typeVerdict", header: "Type verdict", cell: ({ row }) => <VerdictChip verdict={row.original.typeVerdict} /> },
     { id: "grade", accessorKey: "grade", header: "Grade", meta: { className: "text-center" }, cell: ({ row }) => <GradeCircle grade={row.original.grade} /> },
-    { id: "city", accessorKey: "city", header: "City / Province", cell: ({ row }) => (row.original.city ? <span>{row.original.city}{row.original.province && <span className="text-muted-foreground"> · {row.original.province}</span>}</span> : <span className="text-faint">—</span>) },
-    { id: "channels", accessorKey: "channels", header: "Channels", enableSorting: false, cell: ({ row }) => <ChannelIcons channels={row.original.channels} /> },
-    { id: "contact", accessorKey: "primaryContact", header: "Contact", cell: ({ row }) => row.original.primaryContact ?? <span className="text-faint">—</span> },
+    {
+      id: "contact", accessorKey: "primaryContact", header: "Contact",
+      cell: ({ row }) => (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="max-w-[14ch] truncate" title={row.original.primaryContact ?? undefined}>{row.original.primaryContact ?? <span className="text-faint">—</span>}</span>
+          <ChannelIcons channels={row.original.channels} size="xs" />
+        </div>
+      ),
+    },
     { id: "participations", accessorKey: "participations", header: "Lines", meta: { numeric: true }, cell: ({ row }) => <span title={`${row.original.openLines} open`}>{row.original.participations}{row.original.openLines > 0 && <span className="text-muted-foreground"> · {row.original.openLines} open</span>}</span> },
     { id: "orders", accessorKey: "ordersCount", header: "Orders", meta: { numeric: true }, cell: ({ row }) => (row.original.ordersCount ? <span title={row.original.onTimeRate == null ? undefined : `on-time ${Math.round(row.original.onTimeRate * 100)} %`}>{row.original.ordersCount}</span> : <span className="text-faint">0</span>) },
     { id: "last", accessorKey: "lastUsedAt", header: "Last used", meta: { numeric: true }, cell: ({ row }) => (row.original.lastUsedAt ? <span title={row.original.lastUsedAt}><DateTime value={row.original.lastUsedAt} variant="short" /> <Age since={row.original.lastUsedAt} className="text-muted-foreground" /></span> : <span className="text-faint">—</span>) },
@@ -85,13 +94,13 @@ export function SuppliersTable({ rows, cities }: { rows: SupplierRow[]; cities: 
           <SelectTrigger size="sm" className="bg-card" aria-label="City"><SelectValue placeholder="City" /></SelectTrigger>
           <SelectContent><SelectItem value={ALL}>All cities</SelectItem>{cities.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
         </Select>
-        <Button type="button" size="sm" variant={openOnly ? "secondary" : "ghost"} aria-pressed={openOnly} onClick={() => setOpenOnly((x) => !x)}>Has open lines</Button>
-        <Button type="button" size="sm" variant={disclosedOnly ? "secondary" : "ghost"} aria-pressed={disclosedOnly} onClick={() => setDisclosedOnly((x) => !x)}>Disclosed to a client</Button>
+        <FilterToggle on={openOnly} onChange={setOpenOnly}>Has open lines</FilterToggle>
+        <FilterToggle on={disclosedOnly} onChange={setDisclosedOnly}>Disclosed to a client</FilterToggle>
         <span className="ml-auto font-mono text-xs text-muted-foreground" data-testid="suppliers-count">{data.length} of {rows.length}</span>
         {active.length > 0 && <Button type="button" size="sm" variant="ghost" onClick={clear}>Clear</Button>}
       </div>
       <DataTable
-        columns={columns} data={data} rowHref={(r) => `/ops/suppliers/${r.ref}`} initialSorting={[{ id: "ref", desc: false }]} className="rounded-t-none" maxHeight="calc(100vh - 16rem)"
+        columns={columns} data={data} rowHref={(r) => `/ops/suppliers/${r.ref}`} initialSorting={[{ id: "name", desc: false }]} className="rounded-t-none" maxHeight="calc(100vh - 16rem)"
         data-testid="suppliers-table"
         emptyState={<EmptyState title="No suppliers match these filters" action={<Button variant="outline" onClick={clear}>Clear filters</Button>} className="py-8" />}
       />

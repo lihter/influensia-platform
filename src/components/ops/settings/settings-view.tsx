@@ -73,7 +73,7 @@ export function AgencyProfileCard({ s, admin, save }: { s: AgencySettings; admin
   );
 }
 
-const CATEGORY_OPTIONS = ["packaging", "fitness", "garden", "lighting", "safety", "seasonal", "furniture", "tools", "other", "default"].map((v) => ({ value: v, label: v }));
+const CATEGORY_OPTIONS = ["packaging", "fitness", "garden", "lighting", "safety", "seasonal", "furniture", "tools", "other", "default"].map((v) => ({ value: v, label: v === "default" ? "Default (fallback)" : v[0].toUpperCase() + v.slice(1) }));
 
 /** Pricing rules editor (admin): inline row edits + "+ Rule" sheet; agents see the table only. */
 export function PricingRulesTable({ rules, admin, actions }: { rules: PricingRuleRow[]; admin: boolean; actions: Pick<SettingsActions, "saveRule" | "deleteRule"> }) {
@@ -116,7 +116,7 @@ export function PricingRulesTable({ rules, admin, actions }: { rules: PricingRul
     ) : k === "rounding" ? <span>{r[k]} dp</span> : <Pct pct={r[k]} />;
 
   const columns: DataTableColumn<PricingRuleRow>[] = [
-    { id: "category", accessorKey: "category", header: "Category", meta: { sticky: true }, cell: ({ row }) => <span className={row.original.category === "default" ? "font-medium text-foreground" : "capitalize"}>{row.original.category}</span> },
+    { id: "category", accessorKey: "category", header: "Category", meta: { sticky: true }, cell: ({ row }) => <span className={row.original.category === "default" ? "font-medium text-foreground" : "capitalize"}>{row.original.category === "default" ? "Default (fallback)" : row.original.category}</span> },
     { id: "margin", accessorKey: "marginPct", header: "Margin", meta: { numeric: true, strong: true }, cell: ({ row }) => num(row.original, "marginPct") },
     { id: "fee", accessorKey: "feePct", header: "Fee", meta: { numeric: true }, cell: ({ row }) => num(row.original, "feePct") },
     { id: "uplift", accessorKey: "upliftPct", header: "Uplift", meta: { numeric: true }, cell: ({ row }) => num(row.original, "upliftPct") },

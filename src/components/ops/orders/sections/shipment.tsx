@@ -94,7 +94,7 @@ function ForwarderSheet({ d }: { d: OpsOrderDetail }) {
   const { act } = useAct();
   const [override, setOverride] = React.useState(false);
   return (
-    <FormShell trigger={<Button size="sm" data-testid="record-forwarder">Record forwarder</Button>} eyebrow={o.ref} title="Record forwarder" description={o.balancePaid ? "Balance is paid — booking moves the order to Shipping." : "Balance not paid — only an admin can ship before balance, with a reason."} submitLabel="Book forwarder"
+    <FormShell trigger={<Button size="sm" variant="outline" data-testid="record-forwarder">Record forwarder</Button>} eyebrow={o.ref} title="Record forwarder" description={o.balancePaid ? "Balance is paid — booking moves the order to Shipping." : "Balance not paid — only an admin can ship before balance, with a reason."} submitLabel="Book forwarder"
       onSubmit={async (e) => { const f = fd(e); return act(() => recordForwarderAction({ orderId: o.id, forwarder: str(f, "forwarder"), forwarderParty: str(f, "forwarderParty") as (typeof FORWARDER_PARTIES)[number], forwarderContact: opt(f, "forwarderContact"), bookingRef: str(f, "bookingRef"), cargoReady: str(f, "cargoReady"), mode: (opt(f, "mode") as (typeof SHIPMENT_MODES)[number] | null), portOfDischarge: opt(f, "portOfDischarge"), etaPort: opt(f, "etaPort"), overrideReason: override ? str(f, "overrideReason") : undefined }), { success: "Forwarder recorded" }); }}>
       <TextField name="forwarder" label="Forwarder" defaultValue={s?.forwarder} placeholder="Rohlig Suus" required autoFocus />
       <SelectField name="forwarderParty" label="Arranged by" defaultValue={s?.forwarderParty ?? "agency"} options={FORWARDER_PARTIES.map((p) => ({ value: p, label: FORWARDER_PARTY[p] }))} hint="Client's forwarder → the factory name appears on their documents; the supplier is marked as disclosed." />
@@ -119,7 +119,7 @@ function ForwarderSheet({ d }: { d: OpsOrderDetail }) {
 function ShippedSheet({ orderId, orderRef }: { orderId: string; orderRef: string }) {
   const { act } = useAct();
   return (
-    <FormShell trigger={<Button size="sm" data-testid="mark-shipped">Mark shipped ex-works</Button>} eyebrow={orderRef} title="Shipped ex-works" submitLabel="Mark shipped"
+    <FormShell trigger={<Button size="sm" variant="outline" data-testid="mark-shipped">Mark shipped ex-works</Button>} eyebrow={orderRef} title="Shipped ex-works" submitLabel="Mark shipped"
       onSubmit={async (e) => { const f = fd(e); return act(() => markShippedAction({ orderId, exworksShippedAt: str(f, "exworksShippedAt") }), { success: "Shipped ex-works" }); }}>
       <DateField name="exworksShippedAt" label="Shipped on" defaultValue={today()} required />
     </FormShell>
@@ -129,7 +129,7 @@ function ShippedSheet({ orderId, orderRef }: { orderId: string; orderRef: string
 function DepartedSheet({ orderId, orderRef, s }: { orderId: string; orderRef: string; s: OpsShipment | null }) {
   const { act } = useAct();
   return (
-    <FormShell trigger={<Button size="sm" data-testid="mark-departed">Mark departed</Button>} eyebrow={orderRef} title="Departed origin" description="If the ETA differs from the planned one, the client gets an ETA update." submitLabel="Confirm departure"
+    <FormShell trigger={<Button size="sm" variant="outline" data-testid="mark-departed">Mark departed</Button>} eyebrow={orderRef} title="Departed origin" description="If the ETA differs from the planned one, the client gets an ETA update." submitLabel="Confirm departure"
       onSubmit={async (e) => { const f = fd(e); return act(() => markDepartedAction({ orderId, mode: str(f, "mode") as (typeof SHIPMENT_MODES)[number], containerOrAwb: str(f, "containerOrAwb"), etd: str(f, "etd"), etaPort: str(f, "etaPort"), portOfDischarge: opt(f, "portOfDischarge") }), { success: "Departed origin" }); }}>
       <SelectField name="mode" label="Mode" defaultValue={s?.mode ?? "sea"} options={SHIPMENT_MODES.map((m) => ({ value: m, label: SHIP_MODE[m] }))} />
       <TextField name="containerOrAwb" label="Container / AWB" defaultValue={s?.containerOrAwb} placeholder="MSKU4471021" required mono />
@@ -145,17 +145,17 @@ function DepartedSheet({ orderId, orderRef, s }: { orderId: string; orderRef: st
 function ArrivedSheet({ orderId, orderRef }: { orderId: string; orderRef: string }) {
   const { act } = useAct();
   return (
-    <FormShell trigger={<Button size="sm" data-testid="mark-arrived">Arrived at port</Button>} eyebrow={orderRef} title="Arrived at port" submitLabel="Mark arrived"
+    <FormShell trigger={<Button size="sm" variant="outline" data-testid="mark-arrived">Arrived at port</Button>} eyebrow={orderRef} title="Arrived at port" submitLabel="Mark arrived"
       onSubmit={async (e) => { const f = fd(e); return act(() => markArrivedAction({ orderId, arrivedPortAt: str(f, "arrivedPortAt") }), { success: "Arrived — customs in progress" }); }}>
       <DateField name="arrivedPortAt" label="Arrived on" defaultValue={today()} required />
     </FormShell>
   );
 }
 
-function DeliveredSheet({ orderId, orderRef, ghost }: { orderId: string; orderRef: string; ghost?: boolean }) {
+function DeliveredSheet({ orderId, orderRef }: { orderId: string; orderRef: string; ghost?: boolean }) {
   const { act } = useAct();
   return (
-    <FormShell trigger={<Button size="sm" variant={ghost ? "outline" : "default"} data-testid="mark-delivered">Mark delivered</Button>} eyebrow={orderRef} title="Mark delivered" description="The client is asked to confirm delivery." submitLabel="Confirm delivered"
+    <FormShell trigger={<Button size="sm" variant="outline" data-testid="mark-delivered">Mark delivered</Button>} eyebrow={orderRef} title="Mark delivered" description="The client is asked to confirm delivery." submitLabel="Confirm delivered"
       onSubmit={async (e) => { const f = fd(e); return act(() => markDeliveredAction({ orderId, deliveredAt: str(f, "deliveredAt") }), { success: "Delivered — client asked to confirm" }); }}>
       <DateField name="deliveredAt" label="Delivered on" defaultValue={today()} required />
     </FormShell>

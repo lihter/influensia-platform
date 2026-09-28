@@ -64,16 +64,13 @@ export function CostTab({ line }: { line: OpsLine }) {
           <div className="flex flex-col gap-1.5"><Label htmlFor="c-oh">{S.cost.overhead}</Label><Input id="c-oh" value={overhead} onChange={(e) => setOverhead(e.target.value)} inputMode="decimal" className="text-right font-mono" /></div>
           <div className="sm:col-span-2"><PriceInput id="c-est" label={S.cost.est} value={est} onChange={(v) => { setEstText(v); setEstTouched(true); }} hint={S.cost.estHint} /></div>
           {errors.estProdCostMinorE2 && <p className="text-xs text-danger sm:col-span-2">{errors.estProdCostMinorE2}</p>}
-          <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="c-method">{S.cost.method}</Label><Input id="c-method" value={method} onChange={(e) => setMethod(e.target.value)} placeholder="mass × resin price" /></div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="c-method">{S.cost.method}</Label><Input id="c-method" value={method} onChange={(e) => setMethod(e.target.value)} placeholder="e.g. mass × resin price" /></div>
           <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="c-notes">{S.cost.notes}</Label><Textarea id="c-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
         </div>
-        <table className="mt-5 w-full text-sm">
-          <tbody>
-            {[[S.cost.material, m], [S.cost.process, p], [S.cost.packaging, k]].map(([l, v]) => <tr key={String(l)} className="border-b border-hairline-faint"><td className="py-1.5 text-ink-2">{l}</td><td className="py-1.5 text-right font-mono">{v ? formatUnitPrice({ minorE2: Number(v), currency: "USD" }, { decimals: 4 }) : "—"}</td></tr>)}
-            <tr className="border-b border-hairline-faint"><td className="py-1.5 text-ink-2">{S.cost.overhead}</td><td className="py-1.5 text-right font-mono">{oh} %</td></tr>
-            <tr className="border-t border-rule-ink font-medium"><td className="py-2">{S.cost.est}</td><td className="py-2 text-right font-mono" data-testid="est-cost">{estE2 ? formatUnitPrice({ minorE2: estE2, currency: "USD" }, { decimals: 4 }) : "—"}</td></tr>
-          </tbody>
-        </table>
+        <div className="mt-5 flex items-baseline justify-between rounded-lg bg-section-alt px-4 py-3">
+          <span className="text-sm text-ink-2">{S.cost.est}</span>
+          <span className="font-mono text-xl font-semibold tracking-[-0.01em] text-foreground" data-testid="est-cost">{estE2 ? formatUnitPrice({ minorE2: estE2, currency: "USD" }, { decimals: 4 }) : "—"}<span className="ml-1 text-sm font-normal text-muted-foreground">/ {line.unit}</span></span>
+        </div>
         {line.state === "spec_frozen" && <p className="mt-3 text-xs text-muted-foreground">{S.cost.firstSave}</p>}
         <div className="mt-4 flex justify-end"><Button type="button" disabled={pending || !estE2} onClick={save} data-testid="save-cost">{S.cost.save}</Button></div>
       </section>
@@ -91,7 +88,7 @@ export function CostTab({ line }: { line: OpsLine }) {
           {line.targetConfirmed ? <span className="text-success">{S.cost.confirmed(line.targetConfirmed.byName ?? "—", formatDate(line.targetConfirmed.at))}</span> : <span className="text-muted-foreground">{line.targetPriceMinorE2 ? S.cost.notConfirmed : S.cost.noTarget}</span>}
         </div>
         <div className="mt-4 flex justify-end">
-          <Button type="button" variant="outline" disabled={pending || !line.targetPriceMinorE2} onClick={() => run(() => confirmTargetAction({ lineId: line.id }), { success: "Target confirmed" })} data-testid="confirm-target">{S.cost.confirm}</Button>
+          <Button type="button" variant={line.targetConfirmed ? "ghost" : "outline"} disabled={pending || !line.targetPriceMinorE2} onClick={() => run(() => confirmTargetAction({ lineId: line.id }), { success: "Target confirmed" })} data-testid="confirm-target">{line.targetConfirmed ? "Re-confirm" : S.cost.confirm}</Button>
         </div>
         <p className="mt-4 text-xs text-muted-foreground">{S.cost.internal}</p>
       </section>

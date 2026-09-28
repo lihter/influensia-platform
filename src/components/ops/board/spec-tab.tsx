@@ -5,7 +5,9 @@ import type { OpsLine } from "@/server/ops/participations";
 import { specCompleteness } from "./pure";
 import { PRODUCT_CATEGORIES, UNITS } from "@/db/enums";
 import { formatQty } from "@/server/shared/money";
-import { formatDate } from "@/server/shared/dates";
+import { fmtDate as formatDate } from "@/lib/format-date";
+import { label, specKeyLabel, specValueLabel, SPEC_KEY_LABELS } from "@/lib/labels";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -111,7 +113,7 @@ export function SpecTab({ line }: { line: OpsLine }) {
                 <figure key={i.id} className="w-24" data-kind={i.kind}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={i.href} alt={i.kind} className="aspect-square w-24 rounded-md border border-border bg-section-alt object-cover" />
-                  <figcaption className="mt-1"><UtilityBadge kind={i.kind === "clean" ? "recommended" : i.kind === "supplier_facing" ? "draft" : "range"}>{i.kind.replace(/_/g, " ")}</UtilityBadge></figcaption>
+                  <figcaption className="mt-1"><UtilityBadge kind={i.kind === "clean" ? "recommended" : i.kind === "supplier_facing" ? "draft" : "range"}>{label("imageKind", i.kind)}</UtilityBadge></figcaption>
                 </figure>
               ))}
             </div>
@@ -125,15 +127,15 @@ export function SpecTab({ line }: { line: OpsLine }) {
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="sp-name">{S.spec.productName}</Label><Input id="sp-name" value={productName} onChange={(e) => setProductName(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sp-cat">{S.spec.category}</Label>
-              <select id="sp-cat" value={category} onChange={(e) => setCategory(e.target.value)} className="h-9 rounded-lg border border-input bg-card px-3 text-sm" data-testid="spec-category">
-                <option value="">—</option>{PRODUCT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <NativeSelect id="sp-cat" value={category} onChange={(e) => setCategory(e.target.value)} data-testid="spec-category">
+                <option value="">Choose…</option>{PRODUCT_CATEGORIES.map((c) => <option key={c} value={c}>{label("productCategory", c)}</option>)}
+              </NativeSelect>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sp-unit">{S.spec.unit}</Label>
-              <select id="sp-unit" value={unit} onChange={(e) => setUnit(e.target.value)} className="h-9 rounded-lg border border-input bg-card px-3 text-sm" data-testid="spec-unit">{UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+              <NativeSelect id="sp-unit" value={unit} onChange={(e) => setUnit(e.target.value)} data-testid="spec-unit">{UNITS.map((u) => <option key={u} value={u}>{label("unit", u)}</option>)}</NativeSelect>
             </div>
-            <div className="flex flex-col gap-1.5"><Label htmlFor="sp-hs">{S.spec.hsCode}</Label><Input id="sp-hs" value={hsCode} onChange={(e) => setHsCode(e.target.value)} className="font-mono" inputMode="numeric" /></div>
+            <div className="flex flex-col gap-1.5"><Label htmlFor="sp-hs">HS code <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="sp-hs" value={hsCode} onChange={(e) => setHsCode(e.target.value)} className="font-mono" inputMode="numeric" placeholder="e.g. 392690" aria-describedby="sp-hs-hint" /><p id="sp-hs-hint" className="text-xs text-muted-foreground">6–10 digits</p></div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="sp-mat">{S.spec.materials}</Label><Input id="sp-mat" value={materials} onChange={(e) => setMaterials(e.target.value)} /></div>
             <div className="flex flex-col gap-1.5 sm:col-span-2"><Label htmlFor="sp-cust">{S.spec.customisation}</Label><Textarea id="sp-cust" rows={2} value={customisation} onChange={(e) => setCustomisation(e.target.value)} /></div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-green-600" checked={artworkRequired} onChange={(e) => setArtwork(e.target.checked)} />{S.spec.artwork}</label>
@@ -143,13 +145,27 @@ export function SpecTab({ line }: { line: OpsLine }) {
             <div className="mb-2 flex items-center justify-between"><Label>{S.spec.fields}</Label><Button type="button" size="sm" variant="ghost" onClick={() => setRows((r) => [...r, { key: "", value: "" }])}>{S.spec.addField}</Button></div>
             <div className="sheet" data-testid="spec-fields">
               <div className="grid grid-cols-[1fr_1.4fr_2rem] gap-2 bg-section-alt px-3 py-1.5 text-2xs font-semibold uppercase tracking-[0.06em] text-muted-foreground"><span>{S.spec.key}</span><span>{S.spec.value}</span><span /></div>
-              {rows.map((r, i) => (
-                <div key={i} className="grid grid-cols-[1fr_1.4fr_2rem] items-center gap-2 px-3 py-1.5">
-                  <Input value={r.key} placeholder="size" onChange={(e) => setRow(i, { key: e.target.value })} className="h-8" data-testid="spec-key" />
-                  <Input value={r.value} placeholder="66×91 mm" onChange={(e) => setRow(i, { value: e.target.value })} className="h-8" data-testid="spec-value" />
-                  <Button type="button" size="icon-xs" variant="ghost" aria-label="Remove" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}><Trash2 /></Button>
-                </div>
-              ))}
+              <datalist id="spec-key-options">{Object.entries(SPEC_KEY_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</datalist>
+              {rows.map((r, i) => {
+                const isBool = r.value === "true" || r.value === "false";
+                return (
+                  <div key={i} className="grid grid-cols-[1fr_1.4fr_2rem] items-center gap-2 px-3 py-1.5">
+                    <div className="min-w-0">
+                      <Input value={r.key} placeholder="e.g. size" list="spec-key-options" onChange={(e) => setRow(i, { key: e.target.value })} className="h-8 font-mono text-xs" data-testid="spec-key" aria-label="Field key" />
+                      {r.key.trim() && <p className="mt-0.5 truncate text-2xs text-muted-foreground" title="What the client reads">Shown as “{specKeyLabel(r.key.trim())}”</p>}
+                    </div>
+                    {isBool ? (
+                      <label className="inline-flex h-8 items-center gap-2 text-sm" data-testid="spec-value">
+                        <input type="checkbox" className="size-4 accent-green-600" checked={r.value === "true"} onChange={(e) => setRow(i, { value: e.target.checked ? "true" : "false" })} />
+                        {r.value === "true" ? "Yes" : "No"}
+                      </label>
+                    ) : (
+                      <Input value={r.value} placeholder="e.g. 66×91 mm" onChange={(e) => setRow(i, { value: e.target.value })} className="h-8" data-testid="spec-value" aria-label="Field value" />
+                    )}
+                    <Button type="button" size="icon-xs" variant="ghost" aria-label="Remove field" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}><Trash2 /></Button>
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div className="mt-5 rounded-lg bg-section-alt px-4 py-3" data-testid="completeness">
@@ -166,7 +182,7 @@ export function SpecTab({ line }: { line: OpsLine }) {
               <DialogTrigger asChild><Button type="button" disabled={!gate.ok || pending} data-testid="freeze-spec">{S.spec.freeze(nextVersion)}</Button></DialogTrigger>
               <DialogContent className="max-w-md">
                 <DialogHeader><DialogTitle>{S.spec.freeze(nextVersion)}</DialogTitle><DialogDescription>Freezing locks the client&apos;s edits and posts &quot;Spec confirmed&quot; to their timeline.</DialogDescription></DialogHeader>
-                <ul className="text-sm text-ink-2">{fields.map((f) => <li key={f.key}><span className="font-medium text-foreground">{f.key}</span> {String(f.value)}</li>)}</ul>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">{fields.map((f) => <React.Fragment key={f.key}><dt className="text-muted-foreground">{specKeyLabel(f.key)}</dt><dd className="text-foreground">{specValueLabel(f.value)}</dd></React.Fragment>)}</dl>
                 <DialogFooter>
                   <Button type="button" disabled={pending} data-testid="freeze-confirm" onClick={() => run(() => freezeSpecAction(payload()), { success: (d) => `Spec v${d.version} frozen` })}>{S.common.confirm}</Button>
                 </DialogFooter>
@@ -179,8 +195,8 @@ export function SpecTab({ line }: { line: OpsLine }) {
             <ul className="sheet" data-testid="spec-versions">
               {line.specs.map((s) => (
                 <li key={s.id} className="sheet-row text-sm">
-                  <div className="flex items-center gap-2"><UtilityBadge kind="version">v{s.version}</UtilityBadge><span className="font-mono text-xs text-muted-foreground">{formatDate(s.frozenAt)} · {s.frozenByName ?? "—"}</span></div>
-                  <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 text-xs">{Object.entries(s.fields).map(([k, v]) => <React.Fragment key={k}><dt className="text-muted-foreground">{k}</dt><dd>{String(v)}</dd></React.Fragment>)}</dl>
+                  <div className="flex items-center gap-2"><UtilityBadge kind="version">v{s.version}</UtilityBadge><span className="text-xs text-muted-foreground"><span className="font-mono">{formatDate(s.frozenAt)}</span> · {s.frozenByName ?? "—"}</span></div>
+                  <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs">{Object.entries(s.fields).map(([k, v]) => <React.Fragment key={k}><dt className="text-muted-foreground">{specKeyLabel(k)}</dt><dd>{specValueLabel(v)}</dd></React.Fragment>)}</dl>
                 </li>
               ))}
             </ul>

@@ -78,6 +78,7 @@ export function SupplierPage({ s, isAdmin, actions }: { s: SupplierDetail; isAdm
     <>
       <PageHeader
         sticky
+        crumbs={[{ href: "/ops/suppliers", label: "Suppliers" }, { label: <span className="font-mono">{s.ref}</span> }]}
         eyebrow={[s.ref, s.city, s.province].filter(Boolean).join(" · ")}
         title={s.legalName}
         titleSuffix={s.cnName || s.uscc ? <>{s.cnName}{s.cnName && s.uscc ? " · " : ""}{s.uscc}</> : undefined}
@@ -115,8 +116,8 @@ export function SupplierPage({ s, isAdmin, actions }: { s: SupplierDetail; isAdm
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
-        <Tabs value={tab} onValueChange={setTab}>
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Tabs value={tab} onValueChange={setTab} className="min-w-0 py-6 xl:pr-6">
           <TabsList>
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="contacts">Contacts <span className="font-mono text-xs text-muted-foreground">{s.contacts.length}</span></TabsTrigger>
@@ -151,7 +152,7 @@ export function SupplierPage({ s, isAdmin, actions }: { s: SupplierDetail; isAdm
                 {s.contacts.map((c) => (
                   <li key={c.id} className="sheet-row flex items-center gap-3" data-testid="contact-row" data-channel={c.channel}>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 text-sm font-medium">{c.name ?? <span className="text-muted-foreground">(no name)</span>}{c.isPrimary && <Star className="size-3.5 fill-green-600 text-green-600" aria-label="primary" />}</p>
+                      <p className="flex items-center gap-2 text-sm font-medium">{c.name ?? <span className="text-muted-foreground">Name not recorded</span>}{c.isPrimary && <Star className="size-3.5 fill-green-600 text-green-600" aria-label="primary" />}</p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><ChannelBadge channel={c.channel} />{c.handle && <span className="font-mono text-foreground">{c.handle}</span>}{c.phone && <span className="font-mono">{c.phone}</span>}</p>
                     </div>
                     <Button variant="ghost" size="icon-sm" aria-label="Edit contact" onClick={() => { setEditingContact(c); setContactOpen(true); }}><Pencil /></Button>
@@ -215,7 +216,7 @@ export function SupplierPage({ s, isAdmin, actions }: { s: SupplierDetail; isAdm
           </TabsContent>
         </Tabs>
 
-        <aside className="-my-6 border-l border-hairline-strong bg-section-alt px-5 py-6 xl:sticky xl:top-16 xl:self-start" data-testid="supplier-rail">
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" data-testid="supplier-rail"><div className="xl:sticky-under-header">
           <p className="eyebrow mb-3">Shown to clients as</p>
           {s.ranges.length === 0 ? (
             <p className="text-sm text-muted-foreground">No factory range published yet. Clients only ever see a “Factory F-nnnn” label.</p>
@@ -241,7 +242,7 @@ export function SupplierPage({ s, isAdmin, actions }: { s: SupplierDetail; isAdm
             <dt className="text-muted-foreground">Updated</dt><dd className="text-right"><DateTime value={s.updatedAt} variant="short" /></dd>
           </dl>
           <Button asChild variant="outline" size="sm" className="mt-6 w-full"><Link href={`/ops/factory-ranges/new?supplier=${s.id}`}>New factory range</Link></Button>
-        </aside>
+        </div></aside>
       </div>
     </>
   );

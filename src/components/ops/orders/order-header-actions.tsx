@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { changeOrderStateAction, setOrderExceptionAction, logWhatsAppAction, closeOrderAction } from "@/app/(ops)/ops/orders/actions";
 import { useAct, Field, TextField, TextareaField, fd, str, opt } from "./ui";
 
@@ -50,7 +51,8 @@ function ChangeStateSheet({ d }: { d: OpsOrderDetail }) {
   const o = d.order;
   const ts = useTranslations("state");
   const { act } = useAct();
-  const [to, setTo] = React.useState<LineState | "">("");
+  // QA-16b: preselect the first legal move so Apply never silently does nothing
+  const [to, setTo] = React.useState<LineState | "">(o.allowedTransitions[0] ?? "");
   const [override, setOverride] = React.useState(false);
   const options = override ? LINE_STATES.filter((s) => s !== o.state) : o.allowedTransitions;
   return (
@@ -62,7 +64,7 @@ function ChangeStateSheet({ d }: { d: OpsOrderDetail }) {
       submitLabel="Apply"
       onSubmit={async (e) => {
         const f = fd(e);
-        if (!to) return false;
+        if (!to) { toast.error("Pick the state to move to."); return false; }
         return act(() => changeOrderStateAction({ orderId: o.id, to, note: opt(f, "note") ?? undefined, overrideReason: override ? str(f, "reason") : undefined }), { success: `State → ${ts(to)}` });
       }}
     >
@@ -74,7 +76,6 @@ function ChangeStateSheet({ d }: { d: OpsOrderDetail }) {
             <label key={s} className={cn("sheet-row flex cursor-pointer items-center gap-3 text-sm hover:bg-surface-sunken", to === s && "bg-green-50")}>
               <input type="radio" name="to" value={s} checked={to === s} onChange={() => setTo(s)} className="accent-green-600" />
               <StateChip state={s} />
-              <span className="font-mono text-2xs text-muted-foreground">{s}</span>
             </label>
           ))}
         </div>

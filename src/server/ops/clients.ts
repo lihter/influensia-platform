@@ -17,6 +17,7 @@ import { enqueue } from "@/server/shared/outbox";
 import { now } from "@/server/shared/clock";
 import { isStale } from "@/server/shared/derived";
 import { inviteUser } from "./admin";
+import { label } from "@/lib/labels";
 
 /* ────────── pure helpers (unit-tested in tests/unit/clients.test.ts) ────────── */
 
@@ -202,7 +203,7 @@ async function clientOrg(db: DbOrTx, orgId: string) {
 /** One line of text for the org feed; admin events pre-render into `payload.text`. */
 function activityText(type: string, p: Record<string, unknown>): string {
   if (typeof p.text === "string" && p.text) return p.text;
-  if (type === "user_invited") return p.resend ? `Invite resent to ${p.email ?? ""}`.trim() : `${p.name ?? p.email ?? "User"} invited (${p.role ?? "client_owner"})`;
+  if (type === "user_invited") return p.resend ? `Invite resent to ${p.email ?? ""}`.trim() : `${p.name ?? p.email ?? "User"} invited as ${label("role", String(p.role ?? "client_owner")).toLowerCase()}`;
   return type.replace(/_/g, " ");
 }
 

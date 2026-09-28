@@ -13,9 +13,11 @@ export const GRADE_HINT: Record<SupplierGrade, string> = { A: "A — verified fa
 
 export function VerdictChip({ verdict, className }: { verdict: SupplierTypeVerdict; className?: string }) {
   const Icon = VERDICT_ICON[verdict];
+  // "Unchecked" is the absence of a verdict: faint text, no chip (DESIGN §6.11), so real verdicts carry the weight.
+  if (verdict === "unchecked") return <span className={cn("inline-flex items-center gap-1 text-xs text-faint", className)} data-verdict={verdict}><Icon className="size-3" />Not checked</span>;
   return (
-    <Badge variant={verdict === "unchecked" ? "dashed" : verdict === "trading" ? "warning" : verdict === "unknown" ? "neutral" : "neutral"} className={cn(verdict === "unchecked" && "font-sans text-2xs font-semibold uppercase tracking-[0.06em] text-muted-foreground", className)} data-verdict={verdict}>
-      <Icon className={cn("size-3", verdict === "unchecked" && "text-faint")} />
+    <Badge variant={verdict === "trading" ? "warning" : "neutral"} className={className} data-verdict={verdict}>
+      <Icon className="size-3" />
       {VERDICT_LABEL[verdict]}
     </Badge>
   );
@@ -28,11 +30,16 @@ export function GradeCircle({ grade, className }: { grade: SupplierGrade | null;
   return <span title={GRADE_HINT[grade]} className={cn("inline-flex size-[22px] items-center justify-center rounded-full border font-mono text-xs font-medium", tone, className)} data-grade={grade}>{grade}</span>;
 }
 
-export function ChannelIcons({ channels, className }: { channels: ContactChannel[]; className?: string }) {
-  if (!channels.length) return <span className="text-faint">—</span>;
+export function ChannelIcons({ channels, className, size = "sm" }: { channels: ContactChannel[]; className?: string; size?: "xs" | "sm" }) {
+  if (!channels.length) return size === "xs" ? null : <span className="text-faint">—</span>;
   return (
-    <span className={cn("inline-flex items-center gap-1.5", className)}>
-      {channels.map((c) => { const Icon = CHANNEL_ICON[c]; return <span key={c} title={CHANNEL_LABEL[c]} className="inline-flex size-6 items-center justify-center rounded-md bg-section-alt text-ink-2"><Icon className="size-3.5" strokeWidth={1.75} /></span>; })}
+    <span className={cn("inline-flex items-center gap-1", className)} aria-label={`Channels: ${channels.map((c) => CHANNEL_LABEL[c]).join(", ")}`}>
+      {channels.map((c) => {
+        const Icon = CHANNEL_ICON[c];
+        // 1688 has no readable glyph: show the digits as a text badge
+        if (c === "1688") return <span key={c} title={CHANNEL_LABEL[c]} className={cn("inline-flex items-center justify-center rounded-md bg-section-alt px-1 font-mono font-semibold text-ink-2", size === "xs" ? "h-5 text-[9px]" : "h-6 text-[10px]")}>1688</span>;
+        return <span key={c} title={CHANNEL_LABEL[c]} className={cn("inline-flex items-center justify-center rounded-md bg-section-alt text-ink-2", size === "xs" ? "size-5" : "size-6")}><Icon className={size === "xs" ? "size-3" : "size-3.5"} strokeWidth={1.75} /></span>;
+      })}
     </span>
   );
 }

@@ -23,7 +23,7 @@ export function PurchaseOrdersSection({ d }: { d: OpsOrderDetail }) {
   const open = d.purchaseOrders.filter((p) => !p.exworksEta).length;
   return (
     <OrderSection id="purchase-orders" number={4} title="Purchase orders" count={open} action={canStart ? <StartProductionSheet orderId={o.id} orderRef={o.ref} defaultEta={o.exworksEta} /> : undefined}>
-      <ul className="sheet">
+      <ul className="sheet bg-card">
         {d.purchaseOrders.length === 0 && <li className="sheet-row text-sm text-muted-foreground">No purchase orders.</li>}
         {d.purchaseOrders.map((po) => <PoRow key={po.id} po={po} orderRef={o.ref} />)}
       </ul>
@@ -89,7 +89,7 @@ function EditPoSheet({ po, orderRef }: { po: OpsPurchaseOrder; orderRef: string 
 function StartProductionSheet({ orderId, orderRef, defaultEta }: { orderId: string; orderRef: string; defaultEta: string | null }) {
   const { act } = useAct();
   return (
-    <FormShell trigger={<Button size="sm" data-testid="start-production">Start production</Button>} eyebrow={orderRef} title="Start production" description="Requires deposit + fee paid and every required artwork approved. Sets the ex-works ETA on every PO and emails the client." submitLabel="Start production"
+    <FormShell trigger={<Button size="sm" variant="outline" data-testid="start-production">Start production</Button>} eyebrow={orderRef} title="Start production" description="Requires deposit + fee paid and every required artwork approved. Sets the ex-works ETA on every PO and emails the client." submitLabel="Start production"
       onSubmit={async (e) => { const f = fd(e); return act(() => startProductionAction({ orderId, exworksEta: str(f, "exworksEta") }), { success: "In production" }); }}>
       <DateField name="exworksEta" label="Ex-works ETA" defaultValue={defaultEta} required />
     </FormShell>

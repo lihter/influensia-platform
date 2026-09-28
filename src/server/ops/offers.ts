@@ -18,7 +18,8 @@ import { clientUsersOf } from "@/server/shared/users";
 import { now, today } from "@/server/shared/clock";
 import { offerRef } from "@/server/shared/ids";
 import { assertClean, loadLeakSources } from "@/server/shared/leak-check";
-import { lineById } from "./participations";
+import { lineById, ensureQuotesIn, PRE_QUOTES_STATES } from "./participations";
+import type { State } from "@/server/shared/state-machine";
 
 export type OfferOptionInput = {
   label: "A" | "B" | "C";
@@ -60,6 +61,12 @@ function validate(input: SaveOfferInput, pricingDisplay: string, send: boolean) 
     if (send && (o.deviationsPlain ?? "").trim().length < 3) errors[`${k}.deviationsPlain`] = "Deviations text required (≥ 3 chars, e.g. \"none\")";
     if (pricingDisplay === "all_in" && o.feeMinor > 0) errors[`${k}.feeMinor`] = "Fee must be 0 for an all-in client";
     if (o.feeMinor < 0) errors[`${k}.feeMinor`] = "Fee cannot be negative";
+    if (o.feeMinor > 100_000_000) errors[`${k}.feeMinor`] = "Fee looks too large";
+    if (o.priceBreaks.some((b) => b.min_qty > 100_000_000 || b.unit_price_minor_e2 > 1_000_000_000)) errors[`${k}.priceBreaks`] = "Quantity or price looks too large";
+    // QA-22: a sample the client must take needs a cost (0 when free) and who pays it
+    if (send && o.sampleRequired && (o.sampleCostMinor === null || o.sampleCostMinor === undefined)) errors[`${k}.sampleCostMinor`] = "Enter the sample cost (0 if free)";
+    if (send && o.sampleRequired && (o.sampleCostMinor ?? 0) > 0 && !o.samplePaidBy) errors[`${k}.samplePaidBy`] = "Choose who pays for the sample";
+    if ((o.sampleCostMinor ?? 0) < 0) errors[`${k}.sampleCostMinor`] = "Sample cost cannot be negative";
   }
   if (send && !/^\d{4}-\d{2}-\d{2}$/.test(input.validUntil)) errors.validUntil = "Valid-until date required";
   if (send && input.validUntil < today()) errors.validUntil = "Valid-until must be in the future";
@@ -78,14 +85,18 @@ export async function saveOffer(ctx: Ctx, input: SaveOfferInput, opts: { send: b
     const errors = validate(input, org.pricingDisplay, opts.send);
     if (Object.keys(errors).length) { throw new ZodError(Object.entries(errors).map(([path, message]) => ({ code: "custom", path: path.split("."), message, input: null }) as never)); }
     // every option must point at a participation of this line with ≥ 1 quote
-    const parts = await tx.select({ id: supplierParticipations.id }).from(supplierParticipations).where(and(eq(supplierParticipations.requestLineId, line.id), isNull(supplierParticipations.deletedAt)));
+    const parts = await tx.select({ id: supplierParticipations.id, status: supplierParticipations.status }).from(supplierParticipations).where(and(eq(supplierParticipations.requestLineId, line.id), isNull(supplierParticipations.deletedAt)));
     const ids = new Set(parts.map((p) => p.id));
     for (const o of input.options) if (!ids.has(o.participationId)) throw new NotFound(`participation for option ${o.label}`);
+    // QA-27: a dropped / cannot-make supplier is not an option source
+    const dead = input.options.filter((o) => parts.some((p) => p.id === o.participationId && (p.status === "dropped" || p.status === "cannot_make")));
+    if (dead.length) throw new ZodError(dead.map((o) => ({ code: "custom", path: [`option${o.label}`, "participationId"], message: "This supplier was dropped — pick another quote", input: null }) as never));
     if (opts.send) {
       const sources = await loadLeakSources(tx);
-      const fields: Record<string, string | null | undefined> = { "Note to client": input.noteToClient };
+      const fields: Record<string, string | null | undefined> = { "Note to client": input.noteToClient, Port: input.port };
       for (const o of input.options) { fields[`Option ${o.label} › deviations`] = o.deviationsPlain; fields[`Option ${o.label} › payment terms`] = o.paymentTermsClient; }
-      assertClean({ fields }, sources);
+      // QA-06: an offer is about the factory by construction → city names count (an inland factory city as "port" is blocked)
+      assertClean({ fields, factoryContext: true }, sources);
     }
     // draft row: reuse the line's draft (or the given offerId if still draft), else new version
     const existing = await tx.select().from(offers).where(and(eq(offers.requestLineId, line.id), isNull(offers.deletedAt))).orderBy(desc(offers.version));
@@ -121,7 +132,9 @@ export async function saveOffer(ctx: Ctx, input: SaveOfferInput, opts: { send: b
     if (!line.selectedParticipationId) linePatch.selectedParticipationId = optionA.participationId as never;
     await tx.update(requestLines).set(linePatch).where(eq(requestLines.id, line.id));
     await logActivity(tx, { orgId: line.orgId, entityType: "request_line", entityId: line.id, type: "offer_sent", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: line.lineRef, offerRef: draft.ref, version: draft.version, text: `Price ready — offer v${draft.version}` } });
-    const from = line.state;
+    let from = line.state as State;
+    // QA-07: quotes were logged before "Mark RFQ sent" → catch the line up first
+    if (PRE_QUOTES_STATES.includes(from)) from = await ensureQuotesIn(tx, line, ctx, new Date(at.getTime() - 10));
     if (from === "quotes_in" || from === "shortlisted" || from === "negotiating") await transition(line.id, "offer_ready", ctx, { tx, at, notifyClient: false, clearException: true });
     else if (from === "offer_ready") await tx.update(requestLines).set({ exception: null, exceptionReason: null, lastStateChangeAt: at, staleSince: null }).where(eq(requestLines.id, line.id));
     else throw new (await import("@/server/shared/state-machine")).IllegalTransition(from, "offer_ready");

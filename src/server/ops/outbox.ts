@@ -12,6 +12,7 @@ import { drain, localSender, retry, enqueue, OUTBOX_LOG } from "@/server/shared/
 import { opsUsers } from "@/server/shared/users";
 import { now } from "@/server/shared/clock";
 import { getOpsDashboard, type OpsRow } from "./dashboard";
+import { label } from "@/lib/labels";
 
 export type OutboxCounts = { pending: number; sent: number; failed: number; total: number };
 
@@ -41,8 +42,8 @@ export function renderSubject(row: { subject: string | null; template: string; p
   if (row.subject) return row.subject;
   const p = row.payload as { name?: string; ref?: string; milestone?: string };
   const ref = p.ref ?? row.entityRef ?? "";
-  if (row.template === "client_milestone_changed" && p.name && p.milestone) return `${p.name}: ${p.milestone.replace(/_/g, " ")}`;
-  return `${row.template.replace(/_/g, " ")}${ref ? ` — ${ref}` : ""}`;
+  if (row.template === "client_milestone_changed" && p.name && p.milestone) return `${p.name}: ${label("milestone", p.milestone)}`;
+  return `${label("notificationTemplate", row.template)}${ref ? ` — ${ref}` : ""}`;
 }
 
 /** Pure: index OUTBOX_LOG lines by outbox row id (the local sender writes `id`). Tolerates partial/garbled lines. */

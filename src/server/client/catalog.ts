@@ -10,11 +10,13 @@ import { products, productSpecs, productImages, files, requests, requestLines, o
 import { type Ctx, isClient, Forbidden, NotFound } from "@/server/shared/authorize";
 import { logActivity } from "@/server/shared/activity";
 import { enqueue } from "@/server/shared/outbox";
+import { defaultAgentFor } from "@/server/shared/default-agent";
 import { transition } from "@/server/shared/transition";
 import { nextRef, lineRef as mkLineRef } from "@/server/shared/ids";
 import { now, today } from "@/server/shared/clock";
 import { ClientCatalogDto, ClientCatalogProductDto, ClientProductImageDto, ClientPreviousOrderDto, ClientSpecFieldDto } from "./dto";
 import { ClientCatalogRequestDto, ClientCatalogCategoryDto } from "./dto/catalog";
+import { specKeyLabel, specValueLabel } from "@/lib/labels";
 
 type ImageRow = { productId: string; id: string; storageKey: string; exifStripped: boolean; createdAt: Date };
 
@@ -83,7 +85,7 @@ export async function getCatalogProduct(ctx: Ctx, ref: string): Promise<ClientCa
     ...base,
     description: p.description,
     images: (imgs.get(p.id) ?? []).map(imageDto),
-    spec: Object.entries(spec[0]?.fields ?? {}).map(([key, value]) => ClientSpecFieldDto.parse({ key: key.replace(/_/g, " "), value: typeof value === "boolean" ? (value ? "yes" : "no") : String(value) })),
+    spec: Object.entries(spec[0]?.fields ?? {}).map(([key, value]) => ClientSpecFieldDto.parse({ key: specKeyLabel(key), value: specValueLabel(value) })),
     previousOrders: prev.map(({ ol, o }) => ClientPreviousOrderDto.parse({ orderRef: o.ref, qty: ol.qty, unit: ol.unit, unitPrice: { minorE2: ol.unitPriceMinorE2, currency: o.currency, unit: ol.unit }, fee: ol.feeMinor ? { minor: ol.feeMinor, currency: o.currency } : null, deliveredAt: o.deliveredAt?.toISOString() ?? null })),
   });
 }
@@ -114,6 +116,13 @@ export async function requestOffer(ctx: Ctx, input: { productRef: string; qty: n
     await logActivity(tx, { orgId: ctx.orgId, entityType: "request", entityId: requestId, type: "request_submitted", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: requestRef, lines: 1, fromCatalog: true } });
     await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "line_created", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: lineRefValue, name: p.name, qty: input.qty, unit: p.unit, fromCatalog: true, productRef: p.ref, text: `Catalog request — ${p.name}` } });
     await transition(lineId, "submitted", ctx, { tx, at, payload: { fromCatalog: true } });
+    // QA-10: a catalog request gets an owner straight away (the client's agent for this product, else their last agent)
+    const agent = await defaultAgentFor(tx, { orgId: ctx.orgId, productId: p.id });
+    if (agent) {
+      await tx.update(requestLines).set({ assignedAgentId: agent.id, updatedAt: at }).where(eq(requestLines.id, lineId));
+      await logActivity(tx, { orgId: ctx.orgId, entityType: "request_line", entityId: lineId, type: "line_assigned", actorId: null, actorName: "System", visibility: "internal", at: new Date(at.getTime() + 500), payload: { ref: lineRefValue, agentId: agent.id, agentName: agent.name, reason: "catalog request" } });
+      await transition(lineId, "in_review", null, { tx, at: new Date(at.getTime() + 1000), payload: { agentName: agent.name } });
+    }
     await enqueue({ userId: ctx.userId, toEmail: ctx.email, template: "client_request_received", subject: `We received your request ${requestRef}`, entityRef: requestRef, payload: { ref: requestRef, name: p.name, qty: input.qty, unit: p.unit, url: `/app/lines/${lineRefValue}` }, idempotencyKey: `client_request_received:${requestId}:${ctx.userId}`, at }, tx);
   });
   return ClientCatalogRequestDto.parse({ requestRef, lineRef: lineRefValue, productRef: p.ref, name: p.name, qty: input.qty, unit: p.unit });

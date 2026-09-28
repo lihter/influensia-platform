@@ -8,8 +8,10 @@ import { organizations, users, comments, activityEvents } from "@/db/schema/app"
 import { type Ctx, isClient, Forbidden } from "@/server/shared/authorize";
 import { loadLineContexts, type LineContext } from "@/server/shared/line-context";
 import { milestoneStep, isActionMilestone, MILESTONES } from "@/server/shared/state-machine";
-import { subLabelFor, exceptionClientText, eventText, isFeedEvent } from "@/server/shared/labels";
+import { subLabelFor, exceptionClientText, eventText, isFeedEvent, clientMilestoneLabel } from "@/server/shared/labels";
+import { offerOutcomeOf } from "./line-extras";
 import { formatDate } from "@/server/shared/dates";
+import { collapseClientUpdates } from "@/server/shared/timeline";
 import { ClientDashboardDto, ClientWaitingItemDto, ClientActiveLineDto, ClientUpdateDto, type WaitingReasonDto } from "./dto";
 
 const CLIENT_REASONS = new Set(["needs_input", "offer_sent", "sample_received", "deposit_due", "artwork_due", "balance_due", "delivery_confirm"]);
@@ -51,7 +53,7 @@ export function waitingItems(lcs: LineContext[]): ClientWaitingItemDto[] {
       const href = reason === "offer_sent" && lc.offer ? `/app/offers/${lc.offer.ref}` : reason === "sample_received" && lc.sample ? `/app/samples/${lc.sample.ref}` : `/app/lines/${lc.ref}${reason === "needs_input" ? "#ask" : ""}`;
       items.push(ClientWaitingItemDto.parse({
         id: `${reason}:${lc.ref}`, reason, entityRef: lc.ref, name: lc.name, href, dueOn: reason === "offer_sent" ? lc.offer?.validUntil ?? null : null, amounts: [],
-        questionExcerpt: reason === "needs_input" ? lc.openQuestion : null, artworkChangesRequested: false, since: lc.lastStateChangeAt.toISOString(),
+        questionExcerpt: reason === "needs_input" ? lc.openQuestion : null, artworkChangesRequested: false, since: (reason === "needs_input" && lc.openQuestionAt ? lc.openQuestionAt : lc.lastStateChangeAt).toISOString(),
       }));
     }
   }
@@ -62,9 +64,10 @@ export function activeLine(lc: LineContext): ClientActiveLineDto {
   return ClientActiveLineDto.parse({
     id: lc.id, ref: lc.ref, href: lc.order ? `/app/orders/${lc.order.ref}` : `/app/lines/${lc.ref}`, name: lc.name, qty: lc.qty, unit: lc.unit,
     milestone: lc.milestone, milestoneStep: milestoneStep(lc.milestone),
-    subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat }),
+    subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat, offerStatus: lc.offer?.status }),
+    milestoneLabel: clientMilestoneLabel(lc.state, lc.milestone), offerOutcome: offerOutcomeOf(lc),
     exception: lc.exception, exceptionText: exceptionClientText(lc.exception), waitingReason: clientWaitingReason(lc),
-    sourcingProgress: lc.sourcing, etaLabel: etaLabelFor(lc), orderRef: lc.order?.ref ?? null, isRepeat: lc.isRepeat, updatedAt: lc.updatedAt.toISOString(),
+    sourcingProgress: lc.sourcing, etaLabel: etaLabelFor(lc), orderRef: lc.order?.ref ?? null, isRepeat: lc.isRepeat, updatedAt: lc.updatedAt.toISOString(), state: lc.state, lastChangeAt: lc.lastStateChangeAt.toISOString(),
   });
 }
 
@@ -86,7 +89,8 @@ export async function getClientDashboard(ctx: Ctx): Promise<ClientDashboardDto> 
   const recent = [
     ...cRows.map((c) => ClientUpdateDto.parse({ id: c.id, kind: "comment", at: c.createdAt.toISOString(), text: c.body, authorName: c.authorName, byYou: !!c.authorId && orgUserIds.has(c.authorId), isActionMilestone: false, attachments: [] })),
     ...eRows.filter((e) => isFeedEvent(e.type, e.payload)).map((e) => ClientUpdateDto.parse({ id: e.id, kind: "event", at: e.createdAt.toISOString(), text: eventText(e.type, e.payload), authorName: e.actorName, byYou: !!e.actorId && orgUserIds.has(e.actorId), isActionMilestone: typeof e.payload.milestone === "string" && isActionMilestone(e.payload.milestone as never) && e.payload.milestoneChanged === true, attachments: [] })),
-  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
+  ].sort((a, b) => b.at.localeCompare(a.at));
+  const recentCollapsed = collapseClientUpdates(recent).slice(0, 5);
 
   return ClientDashboardDto.parse({
     companyLabel: org?.name ?? "",
@@ -94,6 +98,6 @@ export async function getClientDashboard(ctx: Ctx): Promise<ClientDashboardDto> 
     waiting: waitingItems(lcs),
     active: active.map(activeLine),
     deliveredCount,
-    recentUpdates: recent,
+    recentUpdates: recentCollapsed,
   });
 }

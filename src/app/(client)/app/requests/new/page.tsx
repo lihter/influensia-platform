@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { requireClientPage } from "@/server/shared/authorize";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageBand } from "@/components/shared/section-band";
 import { NewRequestForm } from "@/components/app/requests/new-request-form";
 import { NextStepsRail } from "@/components/app/requests/next-steps-rail";
 import { createRequestAction } from "./actions";
@@ -14,11 +15,13 @@ export default async function NewRequestPage() {
   const t = await getTranslations("app.newRequest");
   return (
     <>
-      <PageHeader eyebrow={t("eyebrow")} title={t("title")} />
-      <div className="grid gap-8 lg:grid-cols-[1fr_20rem]">
-        <NewRequestForm mode="client" action={createRequestAction} />
-        <NextStepsRail />
-      </div>
+      <PageHeader band eyebrow={t("eyebrow")} title={t("title")} meta={<span>Paste links or drop photos, add quantities, send. Same effort as a message.</span>} />
+      <PageBand tone="page" pad="lg">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <NewRequestForm mode="client" action={createRequestAction} />
+          <NextStepsRail />
+        </div>
+      </PageBand>
     </>
   );
 }

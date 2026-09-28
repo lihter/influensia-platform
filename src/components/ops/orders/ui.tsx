@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SectionHeading } from "@/components/shared/section-band";
@@ -53,8 +54,13 @@ export function TextField(p: { name: string; label: string; defaultValue?: strin
   );
 }
 
-export function DateField(p: { name: string; label: string; defaultValue?: string | null; required?: boolean; hint?: string }) {
-  return <TextField {...p} type="date" mono />;
+/** EU date field (dd.mm.yyyy shown, ISO posted under `name`). */
+export function DateField(p: { name: string; label: string; defaultValue?: string | null; required?: boolean; hint?: string; min?: string; max?: string }) {
+  return (
+    <Field label={p.label} htmlFor={p.name} hint={p.hint}>
+      <DateInput id={p.name} name={p.name} defaultValue={p.defaultValue ?? undefined} required={p.required} min={p.min} max={p.max} />
+    </Field>
+  );
 }
 
 export function TextareaField(p: { name: string; label: string; defaultValue?: string | null; required?: boolean; placeholder?: string; rows?: number; hint?: string }) {
@@ -100,11 +106,15 @@ export const num = (f: FormData, k: string) => { const v = str(f, k); return v ?
 /** money input "1,234.56" → minor */
 export const minor = (f: FormData, k: string) => { const v = str(f, k).replace(/[,\s]/g, ""); return v ? Math.round(Number(v) * 100) : 0; };
 
-/** One numbered stacked section (DESIGN §6.10): white card, ink-rule heading with eyebrow number, right-aligned action, open count. */
+/**
+ * One numbered section of the order page (DESIGN §6.10) rendered as a band: the page stacks them and alternates the
+ * ground (page / white), so each section reads as its own division. Heading = number pill + H2 + open chip + actions.
+ * Section actions are `outline`/`ghost` size sm — the header owns the one primary.
+ */
 export function OrderSection({ id, number, title, count, action, children, className }: { id: string; number: number; title: string; count?: number; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section id={id} className={cn("scroll-mt-24 rounded-xl border border-border bg-card p-5", className)} aria-labelledby={`${id}-h`} data-testid={`section-${id}`}>
-      <SectionHeading number={number} title={<span id={`${id}-h`}>{title}{typeof count === "number" && count > 0 && <span className="ml-2 font-mono text-sm font-normal text-warning">{count} open</span>}</span>} action={action} className="border-t-0 pt-0" />
+    <section id={id} className={cn("scroll-under-header", className)} aria-labelledby={`${id}-h`} data-testid={`section-${id}`}>
+      <SectionHeading number={number} title={<span id={`${id}-h`} className="inline-flex items-center gap-2">{title}{typeof count === "number" && count > 0 && <span className="inline-flex h-5 items-center rounded-md border border-warning-border bg-warning-wash px-1.5 font-mono text-2xs font-medium text-warning">{count} open</span>}</span>} action={action} className="border-t-0 pt-0" />
       <div className="mt-4">{children}</div>
     </section>
   );

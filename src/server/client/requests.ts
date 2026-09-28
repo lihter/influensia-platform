@@ -22,29 +22,34 @@ import { storeDocument } from "@/server/shared/files";
 import { nextRef, lineRef } from "@/server/shared/ids";
 import { now } from "@/server/shared/clock";
 import { milestoneFor, milestoneStep, isActionMilestone, isBeforeOrder, MILESTONES } from "@/server/shared/state-machine";
-import { subLabelFor, exceptionClientText, eventText, isFeedEvent, MILESTONE_EVENT_TYPES } from "@/server/shared/labels";
+import { subLabelFor, exceptionClientText, eventText, isFeedEvent, MILESTONE_EVENT_TYPES, clientMilestoneLabel } from "@/server/shared/labels";
 import { clientUsersOf, opsUsers } from "@/server/shared/users";
 import { factoryLabelForLine } from "@/server/shared/sourcing-counts";
 import { ClientRequestDto, ClientRequestLineDto, ClientDocumentDto, ClientUpdateDto, ClientEventDto } from "./dto";
 import { ClientListRowDto, ClientRequestListDto, ClientRequestPageDto, ClientRequestCreatedDto, type ClientListTabDto } from "./dto/requests";
 import { clientWaitingReason, etaLabelFor } from "./dashboard";
+import { lineExtras, milestoneDatesFor, specFieldsFor, offerOutcomeOf } from "./line-extras";
+import { canRequestSpecChange } from "./lines";
+import { collapseClientUpdates, collapseClientHistory, SAME_DAY_MS } from "@/server/shared/timeline";
 import { parseLink } from "@/components/app/requests/link-parse";
 
 /* ───────────────────────── Input schema (shared by the client + ops actions) ───────────────────────── */
 
 export const MAX_LINES = 50;
+/** QA-13: request_lines.qty_first is a 32-bit integer; anything above this is a typo, not an order. */
+export const MAX_QTY = 10_000_000;
 export const MAX_IMAGES_PER_LINE = 10;
 
 export const NewLineSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(200),
-  qty: z.coerce.number().int("Enter a quantity").min(1, "Enter a quantity"),
+  qty: z.coerce.number({ error: "Enter a quantity" }).int("Whole numbers only").min(1, "Enter a quantity").max(MAX_QTY, "Quantity is too large — contact us for volumes above 10 million"),
   unit: z.string().trim().min(1).max(10).default("pcs"),
   links: z.array(z.string().url().max(2048)).max(20).default([]),
   note: z.string().trim().max(2000).nullable().default(null),
   clientSku: z.string().trim().max(80).nullable().default(null),
   targetDelivery: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
   reorderInterval: z.enum(["none", "monthly", "quarterly", "yearly"]).nullable().default(null),
-  volume12m: z.coerce.number().int().nonnegative().nullable().default(null),
+  volume12m: z.coerce.number().int("Whole numbers only").nonnegative("Can't be negative").max(1_000_000_000, "Volume is too large").nullable().default(null),
   /** number of files attached in the multipart body under `line-{i}-file-{j}` */
   fileCount: z.number().int().min(0).max(MAX_IMAGES_PER_LINE).default(0),
 });
@@ -113,10 +118,12 @@ export async function insertRequest(db: Db, p: InsertRequestParams): Promise<Cli
   const draft = input.draft;
   const [org] = await db.select({ id: organizations.id, name: organizations.name, country: organizations.country, incoterm: organizations.defaultIncoterm }).from(organizations).where(and(eq(organizations.id, p.orgId), eq(organizations.type, "client"))).limit(1);
   if (!org) throw new NotFound("client org");
-  const ref = await nextRef(db, "REQ", at.getUTCFullYear());
   const requestId = uuidv7();
+  let ref = "";
 
   await db.transaction(async (tx) => {
+    // QA-13: the number is taken inside the transaction, so a failed insert never burns a request number
+    ref = await nextRef(tx as never, "REQ", at.getUTCFullYear());
     await tx.insert(requests).values({
       id: requestId, ref, orgId: org.id, source: p.source, status: draft ? "draft" : "submitted", note: input.note, submittedAt: draft ? null : at,
       targetDelivery: input.targetDelivery, destination: input.destination ?? org.country ?? null, incotermWanted: input.incotermWanted ?? org.incoterm,
@@ -158,7 +165,7 @@ export async function insertRequest(db: Db, p: InsertRequestParams): Promise<Cli
         await enqueue({ userId: u.id, toEmail: u.email, template: "client_request_received", subject: `We received your request ${ref}`, entityRef: ref, payload: { ref, url: `/app/requests/${ref}`, lines: input.lines.length }, idempotencyKey: `client_request_received:${requestId}:${u.id}`, at }, tx);
       }
       for (const u of await opsUsers(tx)) {
-        await enqueue({ userId: u.id, toEmail: u.email, template: "ops_new_request", subject: `New request ${ref} from ${org.name} (${input.lines.length} lines)`, entityRef: ref, payload: { ref, url: `/ops/requests/${ref}`, org: org.name, lines: input.lines.length, source: p.source }, idempotencyKey: `ops_new_request:${requestId}:${u.id}`, at }, tx);
+        await enqueue({ userId: u.id, toEmail: u.email, template: "ops_new_request", subject: `New request ${ref} from ${org.name} (${input.lines.length} ${input.lines.length === 1 ? "line" : "lines"})`, entityRef: ref, payload: { ref, url: `/ops/requests/${ref}`, org: org.name, lines: input.lines.length, source: p.source }, idempotencyKey: `ops_new_request:${requestId}:${u.id}`, at }, tx);
       }
     }
   });
@@ -223,9 +230,10 @@ export function listRow(lc: LineContext): ClientListRowDto {
     displayRef: orderRef ? `${orderRef} · line ${String(lc.lineNo).padStart(2, "0")}` : lc.ref,
     href: lc.state === "draft" ? `/app/requests/${lc.requestRef}` : orderRef ? `/app/orders/${orderRef}` : `/app/lines/${lc.ref}`,
     name: lc.name, qty: lc.qty, unit: lc.unit, state: lc.state, milestone: lc.milestone, milestoneStep: milestoneStep(lc.milestone),
-    subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat }),
+    subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat, offerStatus: lc.offer?.status }),
+    milestoneLabel: clientMilestoneLabel(lc.state, lc.milestone), offerOutcome: offerOutcomeOf(lc),
     exception: lc.exception, exceptionText: exceptionClientText(lc.exception), waitingReason: clientWaitingReason(lc), sourcingProgress: lc.sourcing,
-    etaLabel: etaLabelFor(lc), isRepeat: lc.isRepeat, isDraft: lc.state === "draft", isClosed: lc.exception === "cancelled", updatedAt: lc.updatedAt.toISOString(),
+    etaLabel: etaLabelFor(lc), isRepeat: lc.isRepeat, isDraft: lc.state === "draft", isClosed: lc.exception === "cancelled", updatedAt: lc.updatedAt.toISOString(), lastChangeAt: lc.lastStateChangeAt.toISOString(),
   });
 }
 
@@ -247,21 +255,22 @@ export async function listClientRequests(ctx: Ctx): Promise<ClientRequestListDto
 
 /* ───────────────────────── Request page (F-06) ───────────────────────── */
 
-async function lineDto(db: Db, lc: LineContext): Promise<ClientRequestLineDto> {
+async function lineDto(db: Db, lc: LineContext, extras: ReturnType<typeof lineExtras>): Promise<ClientRequestLineDto> {
   const price = lc.offer?.acceptedUnitPriceMinorE2 != null ? { minorE2: lc.offer.acceptedUnitPriceMinorE2, currency: lc.offer.currency, unit: lc.unit } : lc.order?.orderLine ? { minorE2: lc.order.orderLine.unitPriceMinorE2, currency: "USD", unit: lc.order.orderLine.unit } : null;
   const fee = lc.offer?.acceptedFeeMinor != null ? { minor: lc.offer.acceptedFeeMinor, currency: lc.offer.currency } : lc.order?.orderLine ? { minor: lc.order.orderLine.feeMinor, currency: "USD" } : null;
   const etaDate = lc.order?.etaPort ?? lc.order?.exworksEta ?? null;
   return ClientRequestLineDto.parse({
     id: lc.id, ref: lc.ref, requestRef: lc.requestRef, lineNo: lc.lineNo, name: lc.name, qty: lc.qty, unit: lc.unit, clientSku: lc.clientSku, links: lc.links, note: lc.note,
     state: lc.state, milestone: lc.milestone, milestoneStep: milestoneStep(lc.milestone),
-    subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat }),
-    exception: lc.exception, exceptionText: exceptionClientText(lc.exception), sourcingProgress: lc.sourcing, agentName: lc.agentName, specVersion: lc.specVersion, specSummary: null,
+    subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat, offerStatus: lc.offer?.status }),
+    exception: lc.exception, exceptionText: exceptionClientText(lc.exception), sourcingProgress: lc.sourcing, agentName: lc.agentName, specVersion: lc.specVersion, specSummary: extras.specFields.length ? extras.specFields.map((f) => (typeof f.value === "boolean" ? (f.value ? f.key : `not ${f.key}`) : `${f.key} ${f.value}`)).join(", ") : null,
     isRepeat: lc.isRepeat, fromCatalog: lc.fromCatalog, factoryLabel: lc.fromRangeId ? await factoryLabelForLine(db, { lineId: lc.id, orgId: lc.orgId }) : null,
     waitingReason: clientWaitingReason(lc), price, fee, etaDate, etaLabel: etaLabelFor(lc),
     offerRef: lc.offer && lc.offer.status !== "draft" ? lc.offer.ref : null, sampleRef: lc.sample?.ref ?? null, orderRef: lc.order?.ref ?? null,
     sampleSkipped: !!lc.order && !lc.sample, lastChangeAt: lc.lastStateChangeAt.toISOString(), updatedAt: lc.updatedAt.toISOString(),
     canEdit: lc.state === "draft" || lc.state === "submitted" || lc.state === "in_review",
     canCancel: isBeforeOrder(lc.state) && lc.state !== "draft" && lc.exception !== "cancelled",
+    ...extras, canRequestChange: canRequestSpecChange(lc),
   });
 }
 
@@ -274,7 +283,8 @@ export async function getClientRequest(ctx: Ctx, ref: string): Promise<ClientReq
   const lineIds = (await db.select({ id: requestLines.id }).from(requestLines).where(and(eq(requestLines.requestId, req.id), isNull(requestLines.deletedAt))).orderBy(asc(requestLines.lineNo))).map((r) => r.id);
   const lcs = (await loadLineContexts(db, { orgId: ctx.orgId, lineIds, includeDrafts: true, includeCancelled: true })).sort((a, b) => a.lineNo - b.lineNo);
   const lines: ClientRequestLineDto[] = [];
-  for (const lc of lcs) lines.push(await lineDto(db, lc));
+  const [dates, specs] = await Promise.all([milestoneDatesFor(db, ctx.orgId, lcs), specFieldsFor(db, lcs.map((l) => l.id))]);
+  for (const lc of lcs) lines.push(await lineDto(db, lc, lineExtras(lc, dates, specs)));
   const entityIds = [req.id, ...lineIds];
 
   const [docRows, cRows, eRows, orgUsers] = await Promise.all([
@@ -297,7 +307,7 @@ export async function getClientRequest(ctx: Ctx, ref: string): Promise<ClientReq
     request: ClientRequestDto.parse({ id: req.id, ref: req.ref, status: req.status, source: req.source, clientRef: req.clientRef, note: req.note, submittedAt: req.submittedAt?.toISOString() ?? null, createdAt: req.createdAt.toISOString(), lines }),
     editable: lines.length > 0 && lines.every((l) => l.canEdit),
     documents: docs,
-    updates,
-    history,
+    updates: collapseClientUpdates(updates, SAME_DAY_MS),
+    history: collapseClientHistory(history, SAME_DAY_MS),
   });
 }

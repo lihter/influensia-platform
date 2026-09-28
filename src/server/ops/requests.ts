@@ -9,6 +9,7 @@ import type { LineState, LineException, Milestone, RequestSource, RequestStatus,
 import type { LinkMeta } from "@/db/types";
 import { type Ctx, isOps, Forbidden, NotFound } from "@/server/shared/authorize";
 import { loadLineContexts, type LineContext } from "@/server/shared/line-context";
+import { isUnassigned } from "./dashboard";
 import { daysBetween } from "@/server/shared/dates";
 import { opsUsers, clientUsersOf, userNames } from "@/server/shared/users";
 import type { WaitingReason, WaitingParty } from "@/server/shared/derived";
@@ -90,9 +91,9 @@ export async function getQueue(ctx: Ctx, opts: { scope?: "queue" | "unassigned" 
   const lcs = (await loadLineContexts(db, {})).filter((lc) => lc.exception !== "on_hold");
   const scope = opts.scope ?? "queue";
   const picked = lcs.filter((lc) =>
-    scope === "unassigned" ? lc.state === "submitted" && !lc.assignedAgentId
+    scope === "unassigned" ? isUnassigned({ agentId: lc.assignedAgentId, state: lc.state })
     : scope === "waiting" ? QUEUE_STATES.includes(lc.state) || lc.waiting.party === "agency"
-    : QUEUE_STATES.includes(lc.state));
+    : QUEUE_STATES.includes(lc.state) || isUnassigned({ agentId: lc.assignedAgentId, state: lc.state }));
   const ids = picked.map((l) => l.id);
   const [images, links, reqRows, agents, clients] = await Promise.all([
     imageCounts(db, ids), linksMetaFor(db, ids),
@@ -160,7 +161,7 @@ export async function listOpsRequests(ctx: Ctx): Promise<{ rows: OpsRequestRow[]
       id: r.id, ref: r.ref, href: `/ops/requests/${r.ref}`, orgId: r.orgId, orgName, source: r.source, status: r.status, lineCount: lines.length,
       states: [...counts.entries()].map(([state, count]) => ({ state, count })),
       agentIds, agentNames, staleCount: lines.filter((l) => l.stale).length, waitingUsCount: lines.filter((l) => l.waiting.party === "agency").length,
-      unassignedCount: lines.filter((l) => l.state === "submitted" && !l.assignedAgentId).length,
+      unassignedCount: lines.filter((l) => isUnassigned({ agentId: l.assignedAgentId, state: l.state })).length,
       submittedAt: r.submittedAt?.toISOString() ?? null, updatedAt: r.updatedAt.toISOString(), lastChangeAt: last.toISOString(), firstLineName: lines[0]?.name ?? "",
     };
   });

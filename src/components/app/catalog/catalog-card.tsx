@@ -1,19 +1,21 @@
 import Link from "next/link";
 import { ImageOff } from "lucide-react";
 import type { ClientCatalogDto } from "@/server/client/dto";
-import { formatDate } from "@/server/shared/dates";
+import { fmtDate } from "@/lib/format-date";
+import { label, unitLabel } from "@/lib/labels";
 import { formatQty } from "@/server/shared/money";
 import { UnitPrice } from "@/components/shared/formatters";
 import { UtilityBadge } from "@/components/shared/chips";
 import { cn } from "@/lib/utils";
+import { perUnit } from "../client-format";
 
 /** Small print under the price: "at 1,000 set · FOB Qingdao · spec v2 · valid until 31 Dec 2026". */
 export function referenceMeta(p: ClientCatalogDto): string {
   return [
-    p.referenceMoq != null ? `at ${formatQty(p.referenceMoq, p.unit)}` : null,
+    p.referenceMoq != null ? `at ${formatQty(p.referenceMoq)} ${unitLabel(p.unit, p.referenceMoq)}` : null,
     p.referenceIncoterm ? `${p.referenceIncoterm} ${p.referencePort ?? ""}`.trim() : null,
     p.referenceSpecVersion != null ? `spec v${p.referenceSpecVersion}` : null,
-    p.referenceValidUntil ? `valid until ${formatDate(p.referenceValidUntil)}` : null,
+    p.referenceValidUntil ? `valid until ${fmtDate(p.referenceValidUntil)}` : null,
   ].filter(Boolean).join(" · ");
 }
 
@@ -34,7 +36,7 @@ export function ReferencePrice({ p, size = "md" }: { p: ClientCatalogDto; size?:
   return (
     <div>
       {p.referencePrice && !p.priceStale ? (
-        <UnitPrice minorE2={p.referencePrice.minorE2} currency={p.referencePrice.currency} unit={p.unit} size={size === "lg" ? "lg" : "sm"} className={size === "md" ? "text-base" : undefined} />
+        <UnitPrice minorE2={p.referencePrice.minorE2} currency={p.referencePrice.currency} unit={perUnit(p.unit)} size={size === "lg" ? "lg" : "sm"} className={size === "md" ? "text-base" : undefined} />
       ) : (
         <span className={cn("font-medium text-ink-2", size === "lg" ? "text-lg" : "text-base")} data-testid="price-tbc">price to be confirmed</span>
       )}
@@ -54,9 +56,9 @@ export function CatalogCard({ p, action, href }: { p: ClientCatalogDto; action?:
       <div className="p-4 pb-0">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-[15px] font-medium leading-5 text-foreground">{p.name}</h3>
-          {p.orderedBefore && <UtilityBadge kind="repeat" className="shrink-0">Ordered before</UtilityBadge>}
+          {p.orderedBefore && <UtilityBadge kind="repeat" className="shrink-0 normal-case tracking-normal">Ordered before</UtilityBadge>}
         </div>
-        <p className="mt-0.5 text-xs text-muted-foreground">{p.category ?? "—"} · <span className="font-mono">{p.ref}</span></p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{p.category ? `${label("productCategory", p.category)} · ` : ""}<span className="font-mono">{p.ref}</span></p>
       </div>
     </>
   );

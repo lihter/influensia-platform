@@ -181,7 +181,7 @@
   --shadow-md: var(--shadow-md);
   --shadow-sheet: var(--shadow-sheet);
 
-  --font-sans: var(--font-figtree), "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-figtree), "Figtree", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-heading: var(--font-sans);
 
@@ -203,7 +203,10 @@
 @layer base {
   * { @apply border-border; }
   html { @apply font-sans; }
-  body { @apply bg-background text-foreground font-sans text-sm antialiased; }
+  body { @apply bg-background text-foreground font-sans text-sm antialiased;
+    /* Figtree at 500/600 on hinted renderers (Linux Chromium) rounds the "t" advance up ("St andard", "WAIT ING").
+       geometricPrecision turns hinting off → subpixel advances. No visible change on macOS/Windows. */
+    text-rendering: geometricPrecision; }
   h1, h2, h3 { @apply text-foreground; letter-spacing: -0.01em; }
   .font-mono { font-feature-settings: "tnum" 1, "zero" 1; font-variant-numeric: tabular-nums; }
   a:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
@@ -218,5 +221,22 @@
   .sheet-row { @apply px-4 py-3; }
   .eyebrow { @apply text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground; }
   .rule-ink { box-shadow: inset 0 -1px 0 var(--rule-ink); }
+  /* Full-bleed section bands (shared/section-band.tsx). border-image outset = ink overflow: bleeds without scrollbars. */
+  .band-white { background-color: var(--card); border-image: linear-gradient(var(--card), var(--card) calc(100% - 1px), var(--border) calc(100% - 1px)) fill 0 / 0 / 0 100vmax; }
+  .band-alt { background-color: var(--bg-section-alt); border-image: linear-gradient(var(--hairline-strong) 1px, var(--bg-section-alt) 1px, var(--bg-section-alt) calc(100% - 1px), var(--hairline-strong) calc(100% - 1px)) fill 0 / 0 / 0 100vmax; }
+  .band-ink { background-color: var(--bg-inverse); color: var(--background); border-image: linear-gradient(var(--bg-inverse), var(--bg-inverse)) fill 0 / 0 / 0 100vmax; }
+  .band-page { background-color: var(--background); border-image: linear-gradient(var(--background), var(--background)) fill 0 / 0 / 0 100vmax; }
   .link { @apply text-link underline decoration-green-200 underline-offset-[3px] hover:decoration-link; }
+}
+
+/* Anchors and rails under the sticky ops header (--ops-header-h is set by shared/sticky-header-var.tsx). Variant-able. */
+@utility scroll-under-header { scroll-margin-top: calc(var(--ops-header-h, 8rem) + 1rem); }
+@utility sticky-under-header { position: sticky; top: calc(var(--ops-header-h, 8rem) + 1.5rem); }
+
+/* CSS-only right-edge scroll shadow for hand-built wide tables (DataTable has its own): shows while more columns sit to the right. */
+@utility scroll-shadow-x {
+  background:
+    linear-gradient(to left, var(--card) 30%, transparent) right center / 40px 100% no-repeat local,
+    linear-gradient(to left, rgba(23, 23, 23, 0.16), transparent) right center / 14px 100% no-repeat scroll,
+    var(--card);
 }

@@ -6,11 +6,12 @@
  */
 import { eq, inArray } from "drizzle-orm";
 import { getDb, type DbOrTx, type Tx } from "@/db";
-import { requestLines, orders, orderLines, requests } from "@/db/schema/app";
+import { requestLines, orders, orderLines, requests, organizations } from "@/db/schema/app";
 import { assertTransition, milestoneChanged, milestoneFor, isFeedState, type State, type Milestone } from "./state-machine";
 import { logActivity } from "./activity";
 import { enqueue } from "./outbox";
 import { clientUsersOf, opsUsers } from "./users";
+import { milestoneEmailSubject } from "./labels";
 import { now } from "./clock";
 import type { Ctx } from "./authorize";
 
@@ -101,18 +102,19 @@ async function notify(tx: DbOrTx, p: { orgId: string; entityId: string; entityRe
     for (const u of await clientUsersOf(tx, p.orgId)) {
       await enqueue({
         userId: u.id, toEmail: u.email, template: "client_milestone_changed", entityRef: p.entityRef,
-        subject: `${p.name}: ${p.changed.replace(/_/g, " ")}`,
-        payload: { ref: p.entityRef, name: p.name, milestone: p.changed, url: p.url },
+        subject: milestoneEmailSubject(p.name, p.to, p.changed),
+        payload: { ref: p.entityRef, name: p.name, milestone: p.changed, state: p.to, text: p.to === "offer_accepted" ? "We're preparing your order confirmation" : undefined, url: p.url },
         idempotencyKey: `client_milestone_changed:${p.entityId}:${p.changed}:${p.at.toISOString()}:${u.id}`, at: p.at,
       }, tx);
     }
   }
   if (p.to === "submitted") {
     const recipients = await opsUsers(tx);
+    const [org] = await tx.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, p.orgId)).limit(1); // QA-40: say who it is from
     for (const u of recipients) {
       await enqueue({
         userId: u.id, toEmail: u.email, template: "ops_new_request", entityRef: p.entityRef,
-        subject: `New request ${p.entityRef}`,
+        subject: `New request ${p.entityRef}${org?.name ? ` from ${org.name}` : ""} — ${p.name}`,
         payload: { ref: p.entityRef, name: p.name, url: `/ops/lines/${p.entityRef}` },
         idempotencyKey: `ops_new_request:${p.entityId}:${u.id}`, at: p.at,
       }, tx);

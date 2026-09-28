@@ -85,8 +85,8 @@
       "offer_ready": "Your price is ready",
       "sampling": "Sample in progress",
       "offer_accepted": "Preparing your order confirmation",
-      "order_confirmed": "Invoice ready",
-      "awaiting_deposit": "Deposit and fee due",
+      "order_confirmed": "Preparing your invoice",
+      "awaiting_deposit": "Invoice ready — deposit and fee due",
       "awaiting_artwork": "Packaging templates",
       "in_production": "In production",
       "qc_inspection": "Inspection scheduled",
@@ -97,7 +97,13 @@
       "eu_port_customs": "EU port / customs",
       "delivered": "Delivered",
       "completed": "Completed",
-      "repeat": "Repeat order — price being confirmed"
+      "repeat": "Repeat order — price being confirmed",
+      "revising_price": "We're revising your price",
+      "offer_declined": "Offer declined — we'll be in touch",
+      "offer_expired": "Price expired — new price coming"
+    },
+    "pendingLabel": {
+      "offer_accepted": "Order being prepared"
     }
   },
   "state": {

@@ -47,8 +47,9 @@ describe("F-26 clients admin — validation and derived values", () => {
 describe("F-27 outbox viewer — pure helpers", () => {
   it("renderSubject prefers the stored subject, else derives one from template + payload", () => {
     expect(renderSubject({ subject: "Price ready — Deck box", template: "client_offer_ready", payload: {}, entityRef: null })).toBe("Price ready — Deck box");
-    expect(renderSubject({ subject: null, template: "client_milestone_changed", payload: { name: "Deck box", milestone: "in_production" }, entityRef: "REQ-1" })).toBe("Deck box: in production");
-    expect(renderSubject({ subject: null, template: "ops_new_request", payload: {}, entityRef: "REQ-2026-0312" })).toBe("ops new request — REQ-2026-0312");
+    expect(renderSubject({ subject: null, template: "client_milestone_changed", payload: { name: "Deck box", milestone: "in_production" }, entityRef: "REQ-1" })).toBe("Deck box: In production");
+    expect(renderSubject({ subject: null, template: "ops_new_request", payload: {}, entityRef: "REQ-2026-0312" })).not.toMatch(/_/); // human label, no snake_case (UX review: raw values)
+    expect(renderSubject({ subject: null, template: "ops_new_request", payload: {}, entityRef: "REQ-2026-0312" })).toMatch(/ — REQ-2026-0312$/);
   });
   it("indexLogLines maps row id → JSON line and skips garbage", () => {
     const text = [

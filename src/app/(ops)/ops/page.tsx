@@ -3,7 +3,11 @@ import { requireOpsPage } from "@/server/shared/authorize";
 import { getOpsDashboard } from "@/server/ops/dashboard";
 import { formatDate } from "@/server/shared/dates";
 import { now } from "@/server/shared/clock";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageBand } from "@/components/shared/section-band";
+import { Button } from "@/components/ui/button";
 import { KpiTile } from "@/components/shared/kpi-tile";
 import { OpsDashboardTables } from "@/components/ops/ops-dashboard-tables";
 import { claimLineAction } from "./actions";
@@ -19,24 +23,32 @@ export default async function OpsDashboardPage({ searchParams }: { searchParams:
   const [dash, t] = await Promise.all([getOpsDashboard(ctx, { mine }), getTranslations("ops.dashboard")]);
   return (
     <>
+      <PageBand tone="white" pad="none" as="header" className="pt-5 pb-5">
       <PageHeader
+        className="mb-5"
         eyebrow={t("eyebrow", { date: formatDate(now(), "d MMM") })}
         title={t("title")}
         actions={
-          <div className="inline-flex h-9 items-center rounded-lg bg-muted p-[3px] text-sm" role="tablist" aria-label="Scope">
-            {[{ v: "mine", l: t("mine") }, { v: "all", l: t("all") }].map((o) => (
-              <a key={o.v} href={`/ops?scope=${o.v}`} role="tab" aria-selected={(o.v === "mine") === mine} className={`flex h-full items-center rounded-md px-3 font-medium ${(o.v === "mine") === mine ? "bg-card text-foreground shadow-sm" : "text-ink-2"}`}>{o.l}</a>
-            ))}
-          </div>
+          <>
+            <div className="inline-flex h-9 items-center rounded-lg border border-hairline-strong bg-section-alt p-[3px] text-sm" role="tablist" aria-label="Scope">
+              {[{ v: "mine", l: t("mine") }, { v: "all", l: t("all") }].map((o) => (
+                <a key={o.v} href={`/ops?scope=${o.v}`} role="tab" aria-selected={(o.v === "mine") === mine} className={`flex h-full items-center rounded-md px-3 font-medium ${(o.v === "mine") === mine ? "bg-card text-foreground shadow-sm" : "text-ink-2 hover:text-foreground"}`}>{o.l}</a>
+              ))}
+            </div>
+            <Button asChild variant="outline"><Link href="/ops/requests/new"><Plus data-icon="inline-start" />{t("newOnBehalf")}</Link></Button>
+          </>
         }
       />
-      <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4" data-testid="kpi-row">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="kpi-row">
         <KpiTile label={t("kpi.stale")} value={dash.counts.stale} meta={t("kpi.staleMeta")} tone="warning" href="#stale" />
         <KpiTile label={t("kpi.waitingUs")} value={dash.counts.waitingUs} meta={t("kpi.waitingUsMeta")} tone="info" href="#waiting-us" />
         <KpiTile label={t("kpi.waitingClient")} value={dash.counts.waitingClient} meta={t("kpi.waitingClientMeta")} tone="neutral" href="#waiting-client" />
         <KpiTile label={t("kpi.unassigned")} value={dash.counts.unassigned} meta={t("kpi.unassignedMeta")} tone="neutral" href="#unassigned" />
       </div>
-      <OpsDashboardTables dash={dash} claim={claimLineAction} />
+      </PageBand>
+      <PageBand tone="page" pad="lg">
+        <OpsDashboardTables dash={dash} claim={claimLineAction} />
+      </PageBand>
     </>
   );
 }

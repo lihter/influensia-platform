@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { requireOpsPage } from "@/server/shared/authorize";
 import { listOpsRequests } from "@/server/ops/requests";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageBand } from "@/components/shared/section-band";
 import { Button } from "@/components/ui/button";
 import { RequestsTable } from "@/components/ops/requests/requests-table";
 
@@ -17,13 +18,15 @@ export default async function OpsRequestsPage({ searchParams }: { searchParams: 
   const [data, t] = await Promise.all([listOpsRequests(ctx), getTranslations("ops.requests")]);
   return (
     <>
-      <PageHeader
+      <PageHeader band
         eyebrow={t("eyebrow")}
         title={t("title")}
         titleSuffix={<span>{data.rows.length} requests</span>}
         actions={<Button asChild><Link href="/ops/requests/new"><Plus data-icon="inline-start" />New request on behalf</Link></Button>}
       />
-      <RequestsTable rows={data.rows} agents={data.agents} clients={data.clients} me={{ id: ctx.userId }} initial={{ client: sp.client ?? "", state: sp.state ?? "", agent: sp.agent ?? "", stale: sp.stale === "1", status: sp.status ?? "" }} />
+      <PageBand tone="page" pad="md">
+        <RequestsTable rows={data.rows} agents={data.agents} clients={data.clients} me={{ id: ctx.userId }} initial={{ client: sp.client ?? "", state: sp.state ?? "", agent: sp.agent ?? "", stale: sp.stale === "1", status: sp.status ?? "" }} />
+      </PageBand>
     </>
   );
 }

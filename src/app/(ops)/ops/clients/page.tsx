@@ -3,6 +3,7 @@ import { Settings2 } from "lucide-react";
 import { requireOpsPage, isAdmin } from "@/server/shared/authorize";
 import { listClients } from "@/server/ops/clients";
 import { PageHeader } from "@/components/shared/page-header";
+import { PageBand } from "@/components/shared/section-band";
 import { Button } from "@/components/ui/button";
 import { ClientsTable } from "@/components/ops/clients/clients-table";
 import { NewClientSheet } from "@/components/ops/clients/new-client-sheet";
@@ -19,7 +20,7 @@ export default async function ClientsPage() {
   const admin = isAdmin(ctx);
   return (
     <>
-      <PageHeader
+      <PageHeader band
         eyebrow={S.eyebrow}
         title={S.title}
         titleSuffix={S.count(rows.length)}
@@ -32,7 +33,9 @@ export default async function ClientsPage() {
           ) : undefined
         }
       />
-      <ClientsTable rows={rows} />
+      <PageBand tone="page" pad="md">
+        <ClientsTable rows={rows} />
+      </PageBand>
     </>
   );
 }

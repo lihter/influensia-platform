@@ -6,6 +6,8 @@ import { Loader2, Play, RotateCcw, Search, Send, Sunrise, Inbox } from "lucide-r
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DateTime } from "@/components/shared/formatters";
+import { fmtDayTime, fmtDateTime } from "@/lib/format-date";
+import { label } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,14 +86,12 @@ export function OutboxView({ rows, counts, templates, admin, actions }: { rows: 
   const retry = (id: string) => start(async () => { const r = await actions.retry({ id }); if (r.ok) toast.success("Queued for retry"); else toast.error(err(r.error)); router.refresh(); });
 
   const columns: DataTableColumn<OutboxListRow>[] = [
-    { id: "created", accessorKey: "createdAt", header: OS.col.created, meta: { numeric: true, sticky: true }, cell: ({ row }) => <span data-outbox-row={row.original.id}><DateTime value={row.original.createdAt} variant="datetime" className="text-xs" /></span> },
-    { id: "recipient", accessorKey: "recipient", header: OS.col.recipient, cell: ({ row }) => <span className="block max-w-[28ch] truncate" title={row.original.recipient}>{row.original.recipient}</span> },
-    { id: "channel", accessorKey: "channel", header: OS.col.channel, cell: ({ row }) => <span className="font-mono text-xs text-muted-foreground">{row.original.channel}</span> },
-    { id: "template", accessorKey: "template", header: OS.col.template, cell: ({ row }) => <span className="font-mono text-xs">{row.original.template}</span> },
-    { id: "subject", accessorKey: "subject", header: OS.col.subject, cell: ({ row }) => <span className="block max-w-[44ch] truncate font-medium text-foreground" title={row.original.subject ?? undefined}>{row.original.subject}</span> },
+    { id: "created", accessorKey: "createdAt", header: OS.col.created, meta: { numeric: true, sticky: true }, cell: ({ row }) => <span data-outbox-row={row.original.id} className="text-xs" title={fmtDateTime(row.original.createdAt)}>{fmtDayTime(row.original.createdAt)}</span> },
+    { id: "subject", accessorKey: "subject", header: OS.col.subject, cell: ({ row }) => <div className="max-w-[48ch] min-w-0"><div className="truncate font-medium text-foreground" title={row.original.subject ?? undefined}>{row.original.subject}</div><div className="truncate text-xs text-muted-foreground" title={row.original.template}>{label("notificationTemplate", row.original.template)} · {label("notificationChannel", row.original.channel)}</div></div> },
+    { id: "recipient", accessorKey: "recipient", header: OS.col.recipient, cell: ({ row }) => <span className="block max-w-[26ch] truncate" title={row.original.recipient}>{row.original.recipient}</span> },
     { id: "status", accessorKey: "status", header: OS.col.status, cell: ({ row }) => <Badge variant={statusVariant(row.original.status)} data-status={row.original.status}>{OS.status[row.original.status]}</Badge> },
     { id: "attempts", accessorKey: "attempts", header: OS.col.attempts, meta: { numeric: true } },
-    { id: "sentAt", accessorKey: "sentAt", header: OS.col.sentAt, meta: { numeric: true }, cell: ({ row }) => (row.original.sentAt ? <DateTime value={row.original.sentAt} variant="datetime" className="text-xs" /> : <span className="text-faint">—</span>) },
+    { id: "sentAt", accessorKey: "sentAt", header: OS.col.sentAt, meta: { numeric: true }, cell: ({ row }) => (row.original.sentAt ? <span className="text-xs" title={fmtDateTime(row.original.sentAt)}>{fmtDayTime(row.original.sentAt)}</span> : <span className="text-faint">—</span>) },
   ];
   if (admin) {
     columns.push({

@@ -67,7 +67,7 @@ test.describe.serial("clients admin, outbox, settings", () => {
     await login(page, "marko@influensia.ro");
     await page.goto("/ops/outbox?status=pending");
     const pendingRows = page.locator("[data-testid=outbox-table] tr[data-testid=data-row]");
-    await expect(pendingRows.filter({ hasText: "auth_invite" }).filter({ hasText: "pevex@example.hr" })).toHaveCount(1);
+    await expect(pendingRows.filter({ has: page.locator("[title=auth_invite]") }).filter({ hasText: "pevex@example.hr" })).toHaveCount(1); // template shows its label ("Invitation"), raw key in title
     await pendingRows.first().click();
     await expect(page.getByTestId("outbox-detail")).toBeVisible();
     await expect(page.getByTestId("outbox-payload")).toContainText("/invite/");

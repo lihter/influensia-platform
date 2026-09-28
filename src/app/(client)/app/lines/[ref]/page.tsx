@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { requireClientPage, NotFound } from "@/server/shared/authorize";
 import { getClientLine } from "@/server/client/lines";
 import { ClientLinePage } from "@/components/app/lines/line-page";
-import { askAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,5 +16,5 @@ export default async function LinePage({ params, searchParams }: { params: Promi
   const { tab } = await searchParams;
   let dto;
   try { dto = await getClientLine(ctx, ref); } catch (e) { if (e instanceof NotFound) notFound(); throw e; }
-  return <ClientLinePage dto={dto} initialTab={tab} ask={askAction} />;
+  return <ClientLinePage dto={dto} initialTab={tab} />;
 }

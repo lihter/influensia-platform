@@ -11,6 +11,7 @@ import { SampleStatusChip, ExceptionChip, VisibilityBadge } from "@/components/s
 import { FormShell } from "@/components/shared/form-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -50,7 +51,7 @@ export function TimelineTab({ line }: { line: OpsLine }) {
           ))}
           <span className="ml-auto font-mono text-xs text-muted-foreground">{entries.length}</span>
         </div>
-        <Timeline entries={entries} showVisibility emptyText={S.timeline.empty} />
+        <Timeline entries={entries} showVisibility limit={15} emptyText={S.timeline.empty} />
       </section>
       <SamplesSection line={line} />
     </div>
@@ -83,7 +84,7 @@ function Composer({ line }: { line: OpsLine }) {
       {mode === "whatsapp" && (
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <Field label={S.timeline.counterparty}><Input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} placeholder="client / supplier name / other" data-testid="wa-counterparty" /></Field>
-          <Field label={S.timeline.occurredAt}><Input type="date" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} className="font-mono" /></Field>
+          <Field label={S.timeline.occurredAt}><DateInput value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} /></Field>
         </div>
       )}
       <Textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} data-testid="composer-body"

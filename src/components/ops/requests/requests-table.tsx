@@ -6,6 +6,8 @@ import type { OpsRequestRow, Agent, ClientOrg } from "@/server/ops/requests";
 import { LINE_STATES, type LineState } from "@/db/enums";
 import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
 import { StateChip, UtilityBadge } from "@/components/shared/chips";
+import { STATE_TONE } from "@/components/shared/state-tone";
+import { NativeSelect } from "@/components/ui/native-select";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Age } from "@/components/shared/formatters";
 import { Button } from "@/components/ui/button";
@@ -14,16 +16,29 @@ import { cn } from "@/lib/utils";
 import { SourceBadge } from "./queue-table";
 import { O } from "./strings";
 
-/** State chips with counts in lane order: `in_production 1 · sampling 1 · negotiating 1 …` (AC-QUEUE-03). */
+const TONE_FILL: Record<string, string> = { neutral: "var(--neutral-border)", info: "var(--info)", warning: "var(--warning)", success: "var(--success)", outline: "var(--foreground)", green: "var(--green-600)", danger: "var(--danger)", dashed: "var(--faint-fg)" };
+
+/**
+ * State roll-up in lane order (AC-QUEUE-03): a 120×6 stacked bar (segment per state, tone colour) + the two furthest
+ * states as chips + "+N more" with the full list in a tooltip. Every state stays in the DOM (data-rollup-state).
+ */
 export function StateRollup({ states }: { states: { state: LineState; count: number }[] }) {
+  const ts = useTranslations("state");
   const sorted = [...states].sort((a, b) => LINE_STATES.indexOf(b.state) - LINE_STATES.indexOf(a.state));
+  const total = sorted.reduce((n, s) => n + s.count, 0) || 1;
+  const full = sorted.map((s) => `${ts(s.state)} ${s.count}`).join(" · ");
+  const rest = sorted.length - 2;
   return (
-    <span className="inline-flex max-w-[30rem] flex-wrap items-center gap-x-2 gap-y-1 py-1.5 whitespace-nowrap" data-testid="state-rollup">
-      {sorted.map((s) => (
-        <span key={s.state} className="inline-flex items-center gap-1" data-rollup-state={s.state} data-count={s.count}>
+    <span className="inline-flex items-center gap-2.5 whitespace-nowrap" data-testid="state-rollup" title={full}>
+      <span className="flex h-1.5 w-[7.5rem] shrink-0 overflow-hidden rounded-full bg-hairline-faint" role="img" aria-label={full}>
+        {sorted.map((s) => <span key={s.state} style={{ width: `${(s.count / total) * 100}%`, background: TONE_FILL[STATE_TONE[s.state]] }} className="h-full border-r border-card last:border-r-0" />)}
+      </span>
+      {sorted.map((s, i) => (
+        <span key={s.state} className={cn("inline-flex items-center gap-1", i >= 2 && "hidden")} data-rollup-state={s.state} data-count={s.count}>
           <StateChip state={s.state} /><span className="font-mono text-xs text-ink-2">{s.count}</span>
         </span>
       ))}
+      {rest > 0 && <span className="text-xs text-muted-foreground">+{rest} more</span>}
     </span>
   );
 }
@@ -47,11 +62,10 @@ export function RequestsTable({ rows, agents, clients, me, initial }: { rows: Op
   const reset = () => { setClient(""); setState(""); setAgent(""); setStatus(""); setStaleOnly(false); setMine(false); setQ(""); };
 
   const columns: DataTableColumn<OpsRequestRow>[] = [
-    { id: "ref", accessorKey: "ref", header: O.col.ref, meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={<span className="font-mono text-xs">{row.original.ref}</span>} sub={row.original.firstLineName} /> },
-    { id: "client", accessorKey: "orgName", header: O.col.client },
+    { id: "ref", accessorKey: "ref", header: "Request", meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.firstLineName || row.original.ref} sub={<>{row.original.ref} · {row.original.lineCount} {row.original.lineCount === 1 ? "line" : "lines"}</>} /> },
+    { id: "client", accessorKey: "orgName", header: O.col.client, cell: ({ row }) => <span className="block max-w-[16ch] truncate" title={row.original.orgName}>{row.original.orgName}</span> },
     { id: "status", accessorKey: "status", header: O.col.status, meta: { className: "hidden 2xl:table-cell" }, cell: ({ row }) => <UtilityBadge kind={row.original.status === "draft" ? "draft" : row.original.status === "closed" ? "version" : "catalog"} className="normal-case tracking-normal">{O.requests.status[row.original.status]}</UtilityBadge> },
-    { id: "lines", accessorKey: "lineCount", header: O.col.lines, meta: { numeric: true, strong: true } },
-    { id: "states", accessorFn: (r) => r.states.map((s) => `${s.state} ${s.count}`).join(" · "), header: O.col.states, enableSorting: false, meta: { className: "min-w-[18rem] whitespace-normal" }, cell: ({ row }) => <StateRollup states={row.original.states} /> },
+    { id: "states", accessorFn: (r) => r.states.map((s) => `${s.state} ${s.count}`).join(" · "), header: O.col.states, enableSorting: false, cell: ({ row }) => <StateRollup states={row.original.states} /> },
     { id: "source", accessorKey: "source", header: O.col.source, cell: ({ row }) => <SourceBadge source={row.original.source} /> },
     { id: "agent", accessorFn: (r) => r.agentNames.join(", "), header: O.col.agent, cell: ({ row }) => (row.original.agentNames.length ? row.original.agentNames.join(", ") : <span className="text-faint">—</span>) },
     { id: "updated", accessorKey: "lastChangeAt", header: O.col.updated, meta: { numeric: true }, cell: ({ row }) => <Age since={row.original.lastChangeAt} stale={row.original.staleCount > 0} /> },
@@ -61,15 +75,17 @@ export function RequestsTable({ rows, agents, clients, me, initial }: { rows: Op
   const select = (value: string, onChange: (v: string) => void, label: string, options: { value: string; label: string }[], testId: string) => (
     <label className="inline-flex items-center gap-1.5 text-xs text-ink-2">
       {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} data-testid={testId} className="h-8 rounded-lg border border-input bg-card px-2 text-sm text-foreground">
+      <NativeSelect size="sm" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} data-testid={testId} className={cn(value && "border-green-600 bg-green-50")}>
         <option value="">{O.all}</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
+      </NativeSelect>
     </label>
   );
   const toggle = (checked: boolean, onChange: (v: boolean) => void, label: string, testId: string) => (
-    <label className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs", checked ? "border-green-600 bg-green-50 text-green-700" : "border-input bg-card text-ink-2")}>
-      <input type="checkbox" className="sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid={testId} />{label}
+    <label className={cn("inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-xs font-medium transition-colors duration-[120ms] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring", checked ? "border-green-600 bg-green-50 text-green-700" : "border-input bg-card text-ink-2 hover:text-foreground")}>
+      <input type="checkbox" className="sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid={testId} />
+      <span aria-hidden className={cn("relative inline-flex h-3.5 w-6 shrink-0 rounded-full transition-colors duration-[120ms]", checked ? "bg-green-600" : "bg-input")}><span className={cn("absolute top-0.5 size-2.5 rounded-full bg-white transition-transform duration-[120ms]", checked ? "translate-x-3" : "translate-x-0.5")} /></span>
+      {label}
     </label>
   );
 

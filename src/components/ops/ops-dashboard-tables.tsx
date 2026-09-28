@@ -10,11 +10,13 @@ import { StateChip, ExceptionChip } from "@/components/shared/chips";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Age, DateTime, Qty } from "@/components/shared/formatters";
 import { Button } from "@/components/ui/button";
+import { nextStepLabel } from "@/lib/labels";
+import { daysBetween } from "@/server/shared/dates";
 
 function Section({ id, title, count, children }: { id: string; title: string; count: number; children: React.ReactNode }) {
   return (
     <section id={id} aria-labelledby={`${id}-h`} data-testid={`section-${id}`}>
-      <h2 id={`${id}-h`} className="mb-2 text-lg font-semibold">{title} <span className="font-mono text-sm font-normal text-muted-foreground">{count}</span></h2>
+      <h2 id={`${id}-h`} className="mb-3 flex items-baseline gap-2 text-lg font-semibold">{title} <span className="font-mono text-sm font-normal text-muted-foreground">{count}</span></h2>
       {children}
     </section>
   );
@@ -22,21 +24,21 @@ function Section({ id, title, count, children }: { id: string; title: string; co
 
 export function OpsDashboardTables({ dash, claim }: { dash: OpsDashboard; claim: (input: { lineId: string }) => Promise<ActionResult<{ lineRef: string }>> }) {
   const t = useTranslations("ops.dashboard");
-  const tw = useTranslations("waiting.ops.reason");
-  const ts = useTranslations("state");
   const [pending, start] = React.useTransition();
   const [claiming, setClaiming] = React.useState<string | null>(null);
 
   const base: DataTableColumn<OpsRow>[] = [
-    { id: "ref", accessorKey: "ref", header: t("col.ref"), meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={<span className="font-mono text-xs">{row.original.ref}</span>} sub={row.original.kind === "order" ? "order" : undefined} /> },
-    { id: "name", accessorKey: "name", header: t("col.name"), cell: ({ row }) => <PrimaryCell title={row.original.name} /> },
-    { id: "client", accessorKey: "orgName", header: t("col.client") },
+    { id: "name", accessorKey: "name", header: t("col.name"), meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={<>{row.original.ref}{row.original.kind === "order" ? " · order" : ""}</>} /> },
+    { id: "client", accessorKey: "orgName", header: t("col.client"), cell: ({ row }) => <span className="block max-w-[16ch] truncate" title={row.original.orgName}>{row.original.orgName}</span> },
     { id: "state", accessorKey: "state", header: t("col.state"), cell: ({ row }) => <span className="inline-flex items-center gap-1.5"><StateChip state={row.original.state} stale={row.original.stale} />{row.original.exception && <ExceptionChip exception={row.original.exception} />}</span> },
   ];
   const last: DataTableColumn<OpsRow> = { id: "last", accessorKey: "lastChangeAt", header: t("col.last"), meta: { numeric: true }, cell: ({ row }) => <Age since={row.original.lastChangeAt} stale={row.original.stale} /> };
   const agent: DataTableColumn<OpsRow> = { id: "agent", accessorKey: "agentName", header: t("col.agent"), cell: ({ row }) => row.original.agentName ?? <span className="text-faint">—</span> };
-  const reason: DataTableColumn<OpsRow> = { id: "reason", accessorKey: "reason", header: t("col.reason"), cell: ({ row }) => (tw.has(row.original.reason) ? tw(row.original.reason as never) : ts.has(row.original.reason) ? ts(row.original.reason as never) : row.original.reason.replace(/_/g, " ")) };
-  const since: DataTableColumn<OpsRow> = { id: "since", accessorKey: "lastChangeAt", header: t("col.since"), meta: { numeric: true }, cell: ({ row }) => <DateTime value={row.original.lastChangeAt} variant="short" /> };
+  const reason: DataTableColumn<OpsRow> = { id: "reason", accessorKey: "reason", header: "Next step", cell: ({ row }) => <span className="text-ink-2">{nextStepLabel(row.original.reason)}</span> };
+  const since: DataTableColumn<OpsRow> = {
+    id: "since", accessorKey: "lastChangeAt", header: t("col.since"), meta: { numeric: true },
+    cell: ({ row }) => { const d = daysBetween(row.original.lastChangeAt); return <span className="inline-flex items-baseline gap-2"><DateTime value={row.original.lastChangeAt} variant="short" />{d > 5 && <span className="font-medium text-warning" title="Waiting more than 5 days">{d} d</span>}</span>; },
+  };
   const qty: DataTableColumn<OpsRow> = { id: "qty", accessorKey: "qty", header: t("col.qty"), meta: { numeric: true }, cell: ({ row }) => (row.original.qty ? <Qty qty={row.original.qty} unit={row.original.unit} /> : "—") };
   const submitted: DataTableColumn<OpsRow> = { id: "submitted", accessorKey: "submittedAt", header: t("col.submitted"), meta: { numeric: true }, cell: ({ row }) => <DateTime value={row.original.submittedAt} variant="short" /> };
   const claimCol: DataTableColumn<OpsRow> = {

@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { formatMoney, formatUnitPrice, formatQty, formatPct } from "@/server/shared/money";
-import { formatDate, formatDateShort, formatDateTime, formatIso, ageLabel } from "@/server/shared/dates";
+import { formatIso, ageLabel } from "@/server/shared/dates";
+import { fmtDate, fmtDateShort, fmtDateTime, fmtDayTime, fmtTime } from "@/lib/format-date";
 
 const mono = "font-mono tabular-nums";
 
@@ -28,10 +29,14 @@ export function Pct({ pct, signed, className }: { pct: number; signed?: boolean;
   return <span className={cn(mono, className)}>{formatPct(pct, { signed })}</span>;
 }
 
-/** Dates: `22 Sep 2026` (prose) / `22 Sep` (short) / with time; ISO in the title tooltip. */
-export function DateTime({ value, variant = "date", className }: { value: Date | string | null | undefined; variant?: "date" | "short" | "datetime"; className?: string }) {
-  const text = variant === "short" ? formatDateShort(value) : variant === "datetime" ? formatDateTime(value) : formatDate(value);
-  return <time dateTime={formatIso(value)} title={formatIso(value)} className={cn(mono, className)}>{text}</time>;
+/**
+ * Dates (EU, Europe/Zagreb, lib/format-date): `22 Sep 2026` (date) / `22 Sep` (short) / `22 Sep 2026, 14:05` (datetime) /
+ * `22 Sep, 14:05` (daytime) / `14:05` (time). The full date-time is in the title tooltip. Always nowrap.
+ */
+export function DateTime({ value, variant = "date", className }: { value: Date | string | null | undefined; variant?: "date" | "short" | "datetime" | "daytime" | "time"; className?: string }) {
+  const text = variant === "short" ? fmtDateShort(value) : variant === "datetime" ? fmtDateTime(value) : variant === "daytime" ? fmtDayTime(value) : variant === "time" ? fmtTime(value) : fmtDate(value);
+  const full = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? fmtDate(value) : fmtDateTime(value);
+  return <time dateTime={formatIso(value)} title={full} className={cn(mono, "whitespace-nowrap", className)}>{text}</time>;
 }
 
 /** `15 d` — age since a timestamp; amber + bold when stale. */

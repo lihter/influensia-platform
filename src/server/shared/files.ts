@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { ZodError } from "zod";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { uuidv7 } from "uuidv7";
 import { getDb, type DbOrTx } from "@/db";
 import { files, documents } from "@/db/schema/app";
@@ -11,6 +12,9 @@ import { now } from "./clock";
 import { leakCheck, type LeakSources, LeakCheckError } from "./leak-check";
 
 const IMAGE = /^image\/(jpeg|png|webp)$/;
+
+/** Upload validation errors surface as field errors on `file` (E_VALIDATION), never as a 500. */
+export const invalidFile = (message: string) => new ZodError([{ code: "custom", path: ["file"], message, input: null } as never]);
 
 export type StoredFile = { id: string; key: string; bytes: number; mime: string; exifStripped: boolean };
 
@@ -25,10 +29,14 @@ export async function storeUpload(
   let { data, mime } = p;
   let ext = p.originalName.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
   let exifStripped = false;
+  if (!data.length) throw invalidFile("The file is empty");
   if (IMAGE.test(mime)) {
     const sharp = (await import("sharp")).default;
-    data = await sharp(data).rotate().jpeg({ quality: 88 }).toBuffer();
+    try { data = await sharp(data).rotate().jpeg({ quality: 88 }).toBuffer(); }
+    catch { throw invalidFile("This file isn't a valid image — use a JPG, PNG or WebP"); } // QA-19: corrupt / renamed file → 400, not 500
     mime = "image/jpeg"; ext = "jpg"; exifStripped = true;
+  } else if (mime === "application/pdf" && data.subarray(0, 1024).indexOf("%PDF") === -1) {
+    throw invalidFile("This file isn't a valid PDF");
   }
   const id = uuidv7();
   const key = fileKey({ orgId: p.orgId, entity: p.entity, entityId: p.entityId, visibility: p.visibility, id, ext });
@@ -86,4 +94,13 @@ export async function agencyOrgId(db: DbOrTx): Promise<string | null> {
   const { organizations } = await import("@/db/schema/app");
   const [o] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.type, "agency")).limit(1);
   return o?.id ?? null;
+}
+
+/** QA-46: download filename from the documents row (clients: only a client-visible row), else the key's basename. */
+export async function downloadNameFor(db: DbOrTx, key: string, ctx: { role: string }): Promise<string> {
+  const [f] = await db.select({ id: files.id, originalName: files.originalName }).from(files).where(eq(files.storageKey, key)).limit(1);
+  const ops = ctx.role === "admin" || ctx.role === "agent";
+  if (!f) return key.split("/").pop()!;
+  const [doc] = await db.select({ filename: documents.filename, visibility: documents.visibility }).from(documents).where(and(eq(documents.fileId, f.id), isNull(documents.deletedAt))).orderBy(desc(documents.createdAt)).limit(1);
+  return (doc && (ops || doc.visibility === "client") ? doc.filename : null) ?? (ops ? f.originalName : null) ?? key.split("/").pop()!;
 }

@@ -3,15 +3,17 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { authorize, OPS_ROLES } from "@/server/shared/authorize";
 import { toActionError, type ActionResult } from "@/server/shared/http";
+import { UNITS } from "@/server/ops/participations";
 import { createRange, uploadRangePdf, addRangeItem, updateRangeItem, removeRangeItem, uploadRangeItemImage, checkRange, publishRange, unpublishRange, type RangeLeakReport } from "@/server/ops/ranges";
 
 const ItemSchema = z.object({
   name: z.string().trim().min(2, "Name is required").max(200),
   productId: z.uuid().nullable().optional().or(z.literal("")),
-  moq: z.string().trim().regex(/^\d*$/, "Whole number").optional().or(z.literal("")),
+  moq: z.string().trim().regex(/^\d{0,9}$/, "Whole number (up to 9 digits)").optional().or(z.literal("")),
   price: z.string().trim().regex(/^(\d+([.,]\d{1,4})?)?$/, "Use a number like 0.058").optional().or(z.literal("")),
   currency: z.string().trim().length(3).optional(),
-  unit: z.string().trim().min(1).max(12).optional(),
+  // QA-43: a unit is a unit ("pcs", "set"…), never a number like "0.31"
+  unit: z.string().trim().toLowerCase().refine((u) => (UNITS as readonly string[]).includes(u), { message: `Unit must be one of: ${UNITS.join(", ")}` }).optional().or(z.literal("").transform(() => undefined)),
   madeHere: z.enum(["yes", "no", "unknown"]).optional(),
   note: z.string().trim().max(500).optional().nullable(),
 });

@@ -45,6 +45,6 @@ export const O = {
   newOnBehalf: {
     eyebrow: "New request",
     title: "New request on behalf of a client",
-    hint: "Same intake as the client portal. Source is recorded as agent_on_behalf; the client is emailed only if you tick the box.",
+    hint: "Same intake as the client portal. The request is recorded as entered by an agent; the client is emailed only if you tick the box.",
   },
 };

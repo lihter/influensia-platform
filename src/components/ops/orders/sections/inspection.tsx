@@ -18,13 +18,14 @@ const tone = (r: string | null) => (r === "pass" ? "success" : r === "fail" ? "d
 export function InspectionSection({ d }: { d: OpsOrderDetail }) {
   const o = d.order;
   const pendingInsp = d.inspections.filter((i) => !i.result);
-  const canSchedule = o.state === "in_production" || o.state === "qc_inspection";
+  // one schedule entry point: only while nothing is scheduled (the header primary scrolls here)
+  const canSchedule = (o.state === "in_production" || o.state === "qc_inspection") && pendingInsp.length === 0;
   return (
     <OrderSection id="inspection" number={5} title="Inspection" count={pendingInsp.length} action={canSchedule ? <ScheduleSheet orderId={o.id} orderRef={o.ref} label={o.exception === "qc_failed" ? "Schedule re-inspection" : "Schedule inspection"} /> : undefined}>
       {d.inspections.length === 0 ? (
         <p className="text-sm text-muted-foreground">Inspection not scheduled yet.</p>
       ) : (
-        <ul className="sheet">
+        <ul className="sheet bg-card">
           {d.inspections.map((i) => <InspectionRow key={i.id} i={i} orderId={o.id} orderRef={o.ref} />)}
         </ul>
       )}
@@ -51,7 +52,7 @@ function InspectionRow({ i, orderId, orderRef }: { i: OpsInspection; orderId: st
         </div>
         {i.defectsNote && <p className="mt-1 text-xs text-ink-2">{i.defectsNote}</p>}
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-          {i.report ? <><a href={i.report.downloadUrl} className="link" download>{i.report.filename}</a><VisibilityBadge visibility={i.report.visibility} />{i.report.visibility === "internal" && <a href="#documents" className="text-muted-foreground hover:underline">publish in 07 Documents</a>}</> : <span className="text-muted-foreground">no report</span>}
+          {i.report ? <><a href={i.report.downloadUrl} className="link" download>{i.report.filename}</a><VisibilityBadge visibility={i.report.visibility} />{i.report.visibility === "internal" && <a href="#documents" className="text-muted-foreground hover:underline">publish in 07 Documents</a>}</> : <span className="text-muted-foreground">No report yet</span>}
           <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-2"><input type="checkbox" checked={i.visibleToClient} disabled={pending} onChange={(e) => act(() => setInspectionVisibilityAction({ inspectionId: i.id, visible: e.target.checked }), { success: e.target.checked ? "Result visible to client" : "Result hidden from client" })} className="accent-green-600" data-testid="visible-to-client" />Show report to client</label>
         </div>
       </div>
@@ -66,7 +67,7 @@ function InspectionRow({ i, orderId, orderRef }: { i: OpsInspection; orderId: st
 function ScheduleSheet({ orderId, inspectionId, orderRef, label, defaults, ghost }: { orderId: string; inspectionId?: string; orderRef: string; label: string; defaults?: OpsInspection; ghost?: boolean }) {
   const { act } = useAct();
   return (
-    <FormShell trigger={<Button size="sm" variant={ghost ? "ghost" : "default"} data-testid={ghost ? "edit-inspection" : "schedule-inspection"}>{label}</Button>} eyebrow={orderRef} title={label} submitLabel="Save"
+    <FormShell trigger={<Button size="sm" variant={ghost ? "ghost" : "outline"} data-testid={ghost ? "edit-inspection" : "schedule-inspection"}>{label}</Button>} eyebrow={orderRef} title={label} submitLabel="Save"
       onSubmit={async (e) => { const f = fd(e); return act(() => scheduleInspectionAction({ orderId, inspectionId, scheduledFor: str(f, "scheduledFor"), inspector: opt(f, "inspector"), aql: opt(f, "aql"), sampleSize: num(f, "sampleSize") }), { success: "Inspection scheduled" }); }}>
       <DateField name="scheduledFor" label="Scheduled for" defaultValue={defaults?.scheduledFor} required />
       <TextField name="inspector" label="Inspector" defaultValue={defaults?.inspector} placeholder="Cristina" />
@@ -82,7 +83,7 @@ function RecordSheet({ i, orderRef }: { i: OpsInspection; orderRef: string }) {
   const { act } = useAct();
   const [result, setResult] = React.useState<(typeof INSPECTION_RESULTS)[number]>("pass");
   return (
-    <FormShell trigger={<Button size="sm" data-testid="record-inspection">Record result</Button>} eyebrow={orderRef} title="Record inspection result" description="Pass → balance invoice due in 3 working days, client emailed. Fail / rework → back to production with a “rework in progress” flag." submitLabel="Record"
+    <FormShell trigger={<Button size="sm" variant="outline" data-testid="record-inspection">Record result</Button>} eyebrow={orderRef} title="Record inspection result" description="Pass → balance invoice due in 3 working days, client emailed. Fail / rework → back to production with a “rework in progress” flag." submitLabel="Record"
       onSubmit={async (e) => { const f = fd(e); f.set("inspectionId", i.id); return act(() => recordInspectionAction(f), { success: result === "pass" ? "QC passed — balance due" : "Recorded — rework in progress" }); }}>
       <SelectField name="result" label="Result" value={result} onChange={setResult} options={INSPECTION_RESULTS.map((r) => ({ value: r, label: INSPECTION_RESULT[r] }))} />
       <DateField name="inspectedAt" label="Inspected on" defaultValue={today()} required />

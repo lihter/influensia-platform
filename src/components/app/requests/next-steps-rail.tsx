@@ -1,6 +1,7 @@
 import { Eyebrow } from "@/components/shared/eyebrow";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { S } from "./strings";
+import { clientInitials } from "../client-format";
 
 const T = S.newRequest;
 
@@ -20,7 +21,7 @@ export function NextStepsRail({ agentName }: { agentName?: string | null }) {
         ))}
       </ol>
       <div className="mt-5 flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-        <Avatar className="size-8"><AvatarFallback className="bg-section-alt text-2xs font-semibold text-ink-2">{name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase()}</AvatarFallback></Avatar>
+        <Avatar className="size-8"><AvatarFallback className="bg-section-alt text-2xs font-semibold text-ink-2">{clientInitials(name)}</AvatarFallback></Avatar>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-foreground">{name}</p>
           <p className="text-xs text-muted-foreground">{T.railAgent}</p>

@@ -17,7 +17,9 @@ import { postClientUpdate } from "@/server/ops/publish";
 
 const uuid = z.uuid();
 const optStr = z.string().trim().max(4000).nullish();
-const optInt = z.coerce.number().int().nonnegative().nullish();
+/** QA-13/QA-15: every integer is bounded (Postgres int4) and every message is human (see humanIssue in shared/http). */
+const MAX_INT = 2_000_000_000;
+const optInt = z.coerce.number().int().nonnegative().max(MAX_INT).nullish();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const refresh = (lineRef: string) => { revalidatePath(`/ops/lines/${lineRef}`); revalidatePath("/ops"); revalidatePath(`/app/lines/${lineRef}`); };
@@ -64,7 +66,7 @@ export async function uploadSupplierImageAction(fd: FormData) {
 }
 
 /* ───────── cost & target ───────── */
-const Cost = z.object({ lineId: uuid, materialFloorMinorE2: optInt, processCostMinorE2: optInt, packagingMinorE2: optInt, overheadPct: z.coerce.number().min(0).max(100).nullish(), estProdCostMinorE2: z.coerce.number().int().positive(), method: optStr, notes: optStr, upliftPct: z.coerce.number().min(0).max(500) });
+const Cost = z.object({ lineId: uuid, materialFloorMinorE2: optInt, processCostMinorE2: optInt, packagingMinorE2: optInt, overheadPct: z.coerce.number().min(0).max(100).nullish(), estProdCostMinorE2: z.coerce.number().int().positive("Estimated production cost must be above 0").max(MAX_INT), method: optStr, notes: optStr, upliftPct: z.coerce.number().min(0, "Uplift can't be negative").max(500, "Uplift can be at most 500 %") });
 export async function saveCostModelAction(raw: z.input<typeof Cost>) { return run(async () => saveCostModel(await authorize({ roles: OPS_ROLES }), Cost.parse(raw))); }
 export async function confirmTargetAction(raw: { lineId: string }) { return run(async () => confirmTarget(await authorize({ roles: OPS_ROLES }), z.object({ lineId: uuid }).parse(raw))); }
 
@@ -88,15 +90,15 @@ export async function shortlistAction(raw: z.input<typeof Shortlist>) {
 export async function markRfqSentAction(fd: FormData) {
   return run(async () => {
     const ctx = await authorize({ roles: OPS_ROLES });
-    const i = z.object({ lineId: uuid, recipientsCount: z.coerce.number().int().nonnegative().optional() }).parse({ lineId: fd.get("lineId"), recipientsCount: fd.get("recipientsCount") || undefined });
+    const i = z.object({ lineId: uuid, recipientsCount: z.coerce.number().int().nonnegative().max(10_000).optional() }).parse({ lineId: fd.get("lineId"), recipientsCount: fd.get("recipientsCount") || undefined });
     return markRfqSent(ctx, { ...i, file: await fileFrom(fd, "file") });
   });
 }
-const Break = z.object({ minQty: z.coerce.number().int().positive(), unitPriceMinorE2: z.coerce.number().int().positive() });
+const Break = z.object({ minQty: z.coerce.number().int().positive("Quantity must be at least 1").max(100_000_000), unitPriceMinorE2: z.coerce.number().int().positive("Enter a price above 0").max(MAX_INT) });
 const Quote = z.object({
   participationId: uuid, currency: z.enum(["USD", "CNY", "EUR"]), unit: z.enum(UNITS), packQty: optInt, incoterm: z.enum(INCOTERMS).nullish(), incotermUncertain: z.boolean().optional(), port: optStr,
   moq: optInt, leadDays: optInt, leadDaysMax: optInt, validUntil: isoDate.nullish().or(z.literal("").transform(() => null)), paymentTerms: optStr, deviations: optStr, unitWeightG: z.coerce.number().nonnegative().nullish(), carton: optStr, notes: optStr,
-  receivedAt: z.string().nullish(), breaks: z.array(Break).min(1),
+  receivedAt: z.string().nullish(), breaks: z.array(Break).min(1, "Add at least one price break (quantity + price)"),
 });
 export async function logQuoteAction(fd: FormData) {
   return run(async () => {
@@ -111,9 +113,9 @@ export async function previewNormalisationAction(raw: { lineId: string; currency
 }
 
 /* ───────── offer builder ───────── */
-const PriceBreak = z.object({ min_qty: z.coerce.number().int().positive(), unit_price_minor_e2: z.coerce.number().int().positive() });
+const PriceBreak = z.object({ min_qty: z.coerce.number().int().positive("Quantity must be at least 1").max(100_000_000), unit_price_minor_e2: z.coerce.number().int().positive("Enter a price above 0").max(MAX_INT) });
 const Option = z.object({
-  label: z.enum(["A", "B", "C"]), participationId: uuid, moq: optInt, leadDays: optInt, priceBreaks: z.array(PriceBreak).min(1), feeMinor: z.coerce.number().int().nonnegative().default(0), factoryPriceMinorE2: optInt,
+  label: z.enum(["A", "B", "C"]), participationId: uuid, moq: optInt, leadDays: optInt, priceBreaks: z.array(PriceBreak).min(1, "Add at least one price row"), feeMinor: z.coerce.number().int().nonnegative().max(MAX_INT).default(0), factoryPriceMinorE2: optInt,
   deviationsPlain: z.string().trim().max(2000).default(""), sampleCostMinor: optInt, samplePaidBy: z.enum(SAMPLE_PAID_BY).nullish(), sampleRequired: z.boolean(), paymentTermsClient: optStr, internalNote: optStr,
 });
 const Offer = z.object({ lineId: uuid, offerId: uuid.nullish(), incoterm: z.enum(INCOTERMS), port: optStr, validUntil: z.string(), noteToClient: optStr, options: z.array(Option).min(1).max(3) });

@@ -31,7 +31,7 @@ test("client catalog: 4 products with reference data, factory range section, no 
   const shelving = page.locator("[data-testid=catalog-card][data-ref=PRD-0001]");
   await expect(shelving).toContainText("Boltless steel shelving 5-tier 180×90×40 black");
   await expect(shelving).toContainText("$8.90");
-  await expect(shelving).toContainText("at 1,000 set · FOB Qingdao · spec v2 · valid until 31 Dec 2026");
+  await expect(shelving).toContainText("at 1,000 sets · FOB Qingdao · spec v2 · valid until 31 Dec 2026"); // unitLabel pluralises
   await expect(page.locator("[data-testid=catalog-card][data-ref=PRD-0002]")).toContainText("$0.26");
   await expect(page.locator("[data-testid=catalog-card][data-ref=PRD-0003]")).toContainText("$9.90");
   await expect(page.locator("[data-testid=catalog-card][data-ref=PRD-0004]")).toContainText("$0.062");
@@ -77,7 +77,7 @@ test("client requests an offer from the catalog → new request in /app/requests
   await page.goto("/app/catalog/PRD-0001");
   await expect(page.getByTestId("reference-block")).toContainText("$8.90");
   await expect(page.getByTestId("previous-orders")).toHaveCount(0); // Piotr never ordered it (AC-CAT-02)
-  await page.getByTestId("request-offer").first().click();
+  await page.locator("[data-testid=request-offer]:visible").first().click(); // header copy is lg:hidden, the aside one shows on desktop
   await page.fill("#qty", "500");
   await page.click("button[type=submit]:has-text('Send request')");
   await page.waitForURL(/\/app\/requests/);

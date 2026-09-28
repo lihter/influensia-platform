@@ -10,6 +10,7 @@ import type { ClientCatalogDto } from "@/server/client/dto";
 import { PRODUCT_CATEGORIES, IMAGE_KINDS, type ImageKind } from "@/db/enums";
 import { formatDate } from "@/server/shared/dates";
 import { PageHeader } from "@/components/shared/page-header";
+import { label, specKeyLabel, specValueLabel } from "@/lib/labels";
 import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
 import { StateChip, UtilityBadge, VisibilityBadge } from "@/components/shared/chips";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -18,6 +19,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -109,19 +111,20 @@ export function ProductPage({ p, isAdmin, owners, actions }: { p: ProductDetail;
   return (
     <>
       <PageHeader
-        sticky eyebrow={<>{p.ref}{p.ownerOrgName && <> · {p.ownerOrgName}</>}{p.category && <> · {p.category}</>}</>} title={p.name}
+        sticky crumbs={[{ href: "/ops/products", label: "Products" }, { label: <span className="font-mono">{p.ref}</span> }]} eyebrow={<>{p.ref}{p.ownerOrgName && <> · {p.ownerOrgName}</>}{p.category && <> · {label("productCategory", p.category)}</>}</>} title={p.name}
         meta={<><VisibilityChip visibility={p.visibility} />{p.publishedAt && <span className="text-xs text-muted-foreground">published <DateTime value={p.publishedAt} variant="short" /></span>}{p.priceStale && <Badge variant="danger">reference price expired</Badge>}<span className="font-mono text-xs text-muted-foreground">{p.specs.length} spec {p.specs.length === 1 ? "version" : "versions"} · {cleanCount} clean {cleanCount === 1 ? "image" : "images"}</span></>}
         actions={
           <>
-            <Button variant="outline" onClick={save} disabled={!dirty || saving} data-testid="save-product">{saving && <Loader2 className="animate-spin" />}Save</Button>
+            {dirty && <span className="inline-flex h-6 items-center rounded-full border border-warning-border bg-warning-wash px-2.5 text-xs font-medium text-warning">Unsaved changes</span>}
+            {(dirty || saving) && <Button variant="outline" onClick={save} disabled={!dirty || saving} data-testid="save-product">{saving && <Loader2 className="animate-spin" />}Save</Button>}
             {isAdmin ? publishButton : <Tooltip><TooltipTrigger asChild><span tabIndex={0}>{publishButton}</span></TooltipTrigger><TooltipContent>Admin only</TooltipContent></Tooltip>}
           </>
         }
       />
       <PublishDialog p={p} open={publishOpen} onOpenChange={setPublishOpen} form={form} publish={actions.publish} unpublish={actions.unpublish} />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
-        <Tabs defaultValue="overview">
+      <div className="grid xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Tabs defaultValue="overview" className="min-w-0 py-6 xl:pr-6">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="images">Images <span className="font-mono text-xs text-muted-foreground">{p.images.length}</span></TabsTrigger>
@@ -178,7 +181,7 @@ export function ProductPage({ p, isAdmin, owners, actions }: { p: ProductDetail;
                       <SelectContent><SelectItem value={NONE}>—</SelectItem>{p.specs.map((s) => <SelectItem key={s.id} value={String(s.version)}>v{s.version}{s.frozenAt ? ` · frozen ${formatDate(s.frozenAt)}` : " · draft"}</SelectItem>)}</SelectContent>
                     </Select>
                   </FieldRow>
-                  <FieldRow label="Valid until" htmlFor="referenceValidUntil" error={errors.referenceValidUntil}><Input id="referenceValidUntil" type="date" value={form.referenceValidUntil} onChange={(e) => set("referenceValidUntil", e.target.value)} className="font-mono" aria-invalid={!!errors.referenceValidUntil} /></FieldRow>
+                  <FieldRow label="Valid until" htmlFor="referenceValidUntil" error={errors.referenceValidUntil}><DateInput id="referenceValidUntil" value={form.referenceValidUntil} onChange={(e) => set("referenceValidUntil", e.target.value)} aria-invalid={!!errors.referenceValidUntil} /></FieldRow>
                 </div>
                 <div className="mt-4 rounded-lg bg-section-alt px-3 py-2 text-xs text-ink-2">
                   Stored: {p.referencePriceMinorE2 != null ? <UnitPrice minorE2={p.referencePriceMinorE2} currency={p.referenceCurrency} unit={p.unit} /> : <span className="text-faint">no price</span>}{p.referenceMoq != null && <> at <Qty qty={p.referenceMoq} unit={p.unit} /></>}{p.referenceValidUntil && <> · <ValidUntil value={p.referenceValidUntil} stale={p.priceStale} expiring={false} /></>}
@@ -205,7 +208,7 @@ export function ProductPage({ p, isAdmin, owners, actions }: { p: ProductDetail;
                     </div>
                     {Object.keys(s.fields).length === 0 ? <p className="px-5 py-3 text-sm text-muted-foreground">No fields yet.</p> : (
                       <dl className="grid grid-cols-1 divide-y divide-hairline-faint sm:grid-cols-2 sm:divide-y-0">
-                        {Object.entries(s.fields).map(([k, v]) => <div key={k} className="grid grid-cols-[9rem_1fr] gap-3 px-5 py-2 text-sm"><dt className="text-muted-foreground">{k.replace(/_/g, " ")}</dt><dd className="font-medium">{String(v)}</dd></div>)}
+                        {Object.entries(s.fields).map(([k, v]) => <div key={k} className="grid grid-cols-[9rem_1fr] gap-3 px-5 py-2 text-sm"><dt className="text-muted-foreground">{specKeyLabel(k)}</dt><dd className="font-medium">{specValueLabel(v)}</dd></div>)}
                       </dl>
                     )}
                   </li>
@@ -224,11 +227,11 @@ export function ProductPage({ p, isAdmin, owners, actions }: { p: ProductDetail;
           </TabsContent>
         </Tabs>
 
-        <aside className="-my-6 border-l border-hairline-strong bg-section-alt px-5 py-6 xl:sticky xl:top-16 xl:self-start" data-testid="catalog-preview">
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" data-testid="catalog-preview"><div className="xl:sticky-under-header">
           <p className="eyebrow mb-3">Catalog preview · as the client sees it</p>
           <CatalogCard p={previewDto(p, form)} action={<Button variant="outline" className="w-full" disabled>Request offer</Button>} />
           <p className="mt-3 text-xs text-muted-foreground">{p.visibility === "catalog" ? "Live in the catalog for every client." : "Not in the catalog. Publish to make it visible to every client."}</p>
-        </aside>
+        </div></aside>
       </div>
     </>
   );

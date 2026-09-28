@@ -113,6 +113,7 @@ export async function requestOfferChanges(ctx: Ctx, input: { ref: string; text: 
 
 export const DECLINE_REASONS = ["too_expensive", "lead_time", "spec", "no_longer_needed", "other"] as const;
 export type DeclineReason = (typeof DECLINE_REASONS)[number];
+export const DECLINE_REASON_LABELS: Record<DeclineReason, string> = { too_expensive: "Too expensive", lead_time: "Lead time too long", spec: "Doesn't match the spec", no_longer_needed: "No longer needed", other: "Other reason" };
 
 /** Decline: offers.status=declined + reason comment; no exception (waiting_on = agency via offer_followup). */
 export async function declineOffer(ctx: Ctx, input: { ref: string; reason: DeclineReason; text?: string | null }) {
@@ -122,7 +123,7 @@ export async function declineOffer(ctx: Ctx, input: { ref: string; reason: Decli
   return db.transaction(async (tx) => {
     const { o, line } = await offerByRef(tx, ctx, input.ref);
     if (o.status !== "sent") throw new Forbidden("offer not open");
-    const body = `${input.reason.replace(/_/g, " ")}${input.text?.trim() ? ` — ${input.text.trim()}` : ""}`;
+    const body = `${DECLINE_REASON_LABELS[input.reason]}${input.text?.trim() ? ` — ${input.text.trim()}` : ""}`;
     await tx.update(offers).set({ status: "declined", declineReason: input.reason, changesText: input.text?.trim() || null, decidedAt: at, decidedBy: ctx.userId, updatedAt: at }).where(eq(offers.id, o.id));
     await tx.insert(comments).values({ id: uuidv7(), orgId: line.orgId, entityType: "request_line", entityId: line.id, authorId: ctx.userId, authorName: ctx.name, body, kind: "decline_reason", visibility: "client", source: "app", createdBy: ctx.userId, createdAt: at, updatedAt: at });
     await logActivity(tx, { orgId: line.orgId, entityType: "request_line", entityId: line.id, type: "offer_decided", actorId: ctx.userId, actorName: ctx.name, visibility: "client", at, payload: { ref: line.lineRef, offerRef: o.ref, decision: "declined", reason: input.reason, text: "Offer declined" } });

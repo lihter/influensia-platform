@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { authorize, OPS_ROLES } from "@/server/shared/authorize";
+import { today } from "@/server/shared/clock";
 import { toActionError, type ActionResult } from "@/server/shared/http";
 import * as repo from "@/server/ops/orders";
 import { LINE_STATES, PAYMENT_KINDS, PAYEES, LINE_EXCEPTIONS, SHIPMENT_MODES, FORWARDER_PARTIES, CUSTOMS_STATUSES, INSPECTION_RESULTS, PO_STATUSES, DOCUMENT_KINDS, COMMERCIAL_MODES, PRICING_DISPLAYS, INCOTERMS } from "@/server/ops/orders";
@@ -10,7 +11,10 @@ import { unpublishDocument, deleteDocument, previewPublish, KindNotPublishable }
 
 const uuid = z.uuid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "yyyy-mm-dd");
-const money = z.number().int().nonnegative();
+const money = z.number().int().nonnegative().max(2_000_000_000, "Amount looks too large");
+/** QA-17: dates that describe something that already happened cannot be in the future (seed clock aware). */
+const pastOrToday = isoDate.refine((d) => d <= today(), "Can't be in the future");
+const todayOrLater = isoDate.refine((d) => d >= today(), "Can't be in the past");
 
 function fail(e: unknown): ActionResult<never> {
   if (e instanceof repo.OrderError || e instanceof KindNotPublishable) return { ok: false, error: e.code };
@@ -42,7 +46,7 @@ export async function setOrderExceptionAction(raw: z.input<typeof SetException>)
 }
 
 /* ────────── payments ────────── */
-const MarkPaid = z.object({ paymentId: uuid, reference: z.string().trim().min(3).max(80), paidAt: isoDate.optional() });
+const MarkPaid = z.object({ paymentId: uuid, reference: z.string().trim().min(3, "Enter the payment reference (at least 3 characters)").max(80), paidAt: pastOrToday.optional() });
 export async function markPaymentPaidAction(raw: z.input<typeof MarkPaid>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = MarkPaid.parse(raw); return repo.markPaymentPaid(ctx, i.paymentId, { reference: i.reference, paidAt: i.paidAt }); });
 }
@@ -71,7 +75,7 @@ export async function uploadDielineAction(fd: FormData) {
 }
 
 /* ────────── purchase orders + production ────────── */
-const PoEta = z.object({ poId: uuid, exworksEta: isoDate });
+const PoEta = z.object({ poId: uuid, exworksEta: todayOrLater });
 export async function setPoEtaAction(raw: z.input<typeof PoEta>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = PoEta.parse(raw); return repo.setPoEta(ctx, i.poId, i.exworksEta); });
 }
@@ -79,17 +83,17 @@ const UpdatePo = z.object({ poId: uuid, terms: z.string().trim().max(120).nullab
 export async function updatePoAction(raw: z.input<typeof UpdatePo>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = UpdatePo.parse(raw); return repo.updatePo(ctx, i.poId, i); });
 }
-const StartProd = z.object({ orderId: uuid, exworksEta: isoDate });
+const StartProd = z.object({ orderId: uuid, exworksEta: todayOrLater });
 export async function startProductionAction(raw: z.input<typeof StartProd>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = StartProd.parse(raw); return repo.startProduction(ctx, i.orderId, { exworksEta: i.exworksEta }); });
 }
 
 /* ────────── inspection ────────── */
-const Schedule = z.object({ orderId: uuid, inspectionId: uuid.optional(), scheduledFor: isoDate, inspector: z.string().trim().max(80).nullable(), aql: z.string().trim().max(20).nullable(), sampleSize: z.number().int().positive().nullable() });
+const Schedule = z.object({ orderId: uuid, inspectionId: uuid.optional(), scheduledFor: isoDate, inspector: z.string().trim().max(80).nullable(), aql: z.string().trim().max(20).nullable(), sampleSize: z.number().int().positive().max(100_000).nullable() });
 export async function scheduleInspectionAction(raw: z.input<typeof Schedule>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = Schedule.parse(raw); return repo.scheduleInspection(ctx, i.orderId, i); });
 }
-const Record = z.object({ inspectionId: uuid, result: z.enum(INSPECTION_RESULTS), inspectedAt: isoDate.optional(), defectsNote: z.string().trim().max(500).nullable(), aql: z.string().trim().max(20).nullable().optional(), sampleSize: z.number().int().positive().nullable().optional(), visibleToClient: z.boolean().optional() });
+const Record = z.object({ inspectionId: uuid, result: z.enum(INSPECTION_RESULTS), inspectedAt: pastOrToday.optional(), defectsNote: z.string().trim().max(500).nullable(), aql: z.string().trim().max(20).nullable().optional(), sampleSize: z.number().int().positive().max(100_000).nullable().optional(), visibleToClient: z.boolean().optional() });
 export async function recordInspectionAction(fd: FormData) {
   return run(async () => {
     const ctx = await authorize({ roles: OPS_ROLES });
@@ -107,7 +111,7 @@ const Forwarder = z.object({ orderId: uuid, forwarder: z.string().trim().min(2).
 export async function recordForwarderAction(raw: z.input<typeof Forwarder>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = Forwarder.parse(raw); return repo.recordForwarder(ctx, i.orderId, i); });
 }
-const Shipped = z.object({ orderId: uuid, exworksShippedAt: isoDate });
+const Shipped = z.object({ orderId: uuid, exworksShippedAt: pastOrToday });
 export async function markShippedAction(raw: z.input<typeof Shipped>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = Shipped.parse(raw); return repo.markShippedExworks(ctx, i.orderId, i); });
 }
@@ -115,7 +119,7 @@ const Departed = z.object({ orderId: uuid, mode: z.enum(SHIPMENT_MODES), contain
 export async function markDepartedAction(raw: z.input<typeof Departed>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = Departed.parse(raw); return repo.markDeparted(ctx, i.orderId, i); });
 }
-const Arrived = z.object({ orderId: uuid, arrivedPortAt: isoDate });
+const Arrived = z.object({ orderId: uuid, arrivedPortAt: pastOrToday });
 export async function markArrivedAction(raw: z.input<typeof Arrived>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = Arrived.parse(raw); return repo.markArrived(ctx, i.orderId, i); });
 }
@@ -123,7 +127,7 @@ const Customs = z.object({ orderId: uuid, customsStatus: z.enum(CUSTOMS_STATUSES
 export async function setCustomsStatusAction(raw: z.input<typeof Customs>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = Customs.parse(raw); return repo.setCustomsStatus(ctx, i.orderId, i.customsStatus); });
 }
-const Delivered = z.object({ orderId: uuid, deliveredAt: isoDate });
+const Delivered = z.object({ orderId: uuid, deliveredAt: pastOrToday });
 export async function markDeliveredAction(raw: z.input<typeof Delivered>) {
   return run(async () => { const ctx = await authorize({ roles: OPS_ROLES }); const i = Delivered.parse(raw); return repo.markDelivered(ctx, i.orderId, i); });
 }

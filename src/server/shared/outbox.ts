@@ -48,6 +48,9 @@ export interface Sender {
   send(row: OutboxRow): Promise<void>;
 }
 
+/** Relative app paths (`/app/lines/…`) → absolute links for email bodies. */
+export const absoluteUrl = (u: string | null) => (u && u.startsWith("/") ? `${(process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "")}${u}` : u);
+
 export const OUTBOX_LOG = () => process.env.OUTBOX_LOG ?? path.join(process.cwd(), ".data", "outbox.log");
 
 /** Local mode (SPEC §0.2): console line + one JSON line per email in ./.data/outbox.log. Nothing is transmitted. */
@@ -60,7 +63,7 @@ export const localSender: Sender = {
       to: row.toEmail ?? row.userId,
       subject: row.subject,
       entity_ref: row.entityRef,
-      url: (row.payload as { url?: string }).url ?? null,
+      url: absoluteUrl((row.payload as { url?: string }).url ?? null), // QA-40: emails need absolute links
       payload: row.payload,
     });
     console.log(`[outbox] template=${row.template} to=${row.toEmail ?? row.userId} subject=${row.subject ?? ""}`);

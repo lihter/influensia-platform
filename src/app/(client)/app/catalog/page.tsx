@@ -15,7 +15,7 @@ export default async function CatalogPage() {
   const [{ products, categories }, ranges, t] = await Promise.all([listCatalog(ctx), listRanges(ctx), getTranslations("app.catalog")]);
   return (
     <>
-      <PageHeader eyebrow={t("eyebrow")} title={t("title")} meta={<span>Reference prices are all-in per unit at the stated quantity. Ask for an offer and we confirm the price for yours.</span>} />
+      <PageHeader band eyebrow={t("eyebrow")} title={t("title")} meta={<span>Reference prices are all-in per unit at the stated quantity. Ask for an offer and we confirm the price for yours.</span>} />
       <CatalogGrid products={products} categories={categories} ranges={ranges} action={requestOfferAction} />
     </>
   );

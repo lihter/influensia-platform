@@ -29,8 +29,8 @@ export default async function OpsLinePage({ params, searchParams }: { params: Pr
   return (
     <>
       <LineHeader line={line} tab={tab} me={{ id: ctx.userId, role: ctx.role }} />
-      <div className={fullWidth ? "" : "grid gap-6 xl:grid-cols-[1fr_22rem]"}>
-        <div className="min-w-0">
+      <div className={fullWidth ? "" : "grid xl:grid-cols-[minmax(0,1fr)_22rem]"}>
+        <div className={fullWidth ? "min-w-0 py-6" : "min-w-0 py-6 xl:pr-6"}>
           {tab === "spec" && <SpecTab line={line} />}
           {tab === "cost" && <CostTab line={line} />}
           {tab === "sourcing" && <SourcingBoard line={line} />}

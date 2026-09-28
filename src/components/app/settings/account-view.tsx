@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { DateTime } from "@/components/shared/formatters";
+import { fmtDate } from "@/lib/format-date";
 import type { ActionResult } from "@/server/shared/http";
 import { PasswordInput, type ClientAccountDto, type ProfileInput } from "@/server/client/dto/settings";
 
@@ -165,7 +165,7 @@ export function PasswordCard({ dto, done }: { dto: ClientAccountDto; done: () =>
         ))}
         <div className="flex justify-end"><Button type="submit" disabled={pending} data-testid="change-password">{pending && <Loader2 className="animate-spin" />}{T.changePassword}</Button></div>
       </form>
-      {dto.passwordSetAt && <p className="mt-3 text-xs text-muted-foreground">Last changed <DateTime value={dto.passwordSetAt} variant="date" /></p>}
+      {dto.passwordSetAt && <p className="mt-3 text-xs text-muted-foreground">Last changed {fmtDate(dto.passwordSetAt)}</p>}
     </Card>
   );
 }

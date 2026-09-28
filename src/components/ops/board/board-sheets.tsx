@@ -7,6 +7,8 @@ import type { ParticipationStatus } from "@/db/enums";
 import { CONTACT_CHANNELS, INCOTERMS, UNITS, PARTICIPATION_STATUSES } from "@/db/enums";
 import { formatUnitPrice } from "@/server/shared/money";
 import { FormShell } from "@/components/shared/form-shell";
+import { NativeSelect } from "@/components/ui/native-select";
+import { DateInput } from "@/components/ui/date-input";
 import { ParticipationChip } from "@/components/shared/chips";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +26,8 @@ type SupplierHit = Extract<Awaited<ReturnType<typeof searchSuppliersAction>>, { 
 const Field = ({ label, children, className, error }: { label: string; children: React.ReactNode; className?: string; error?: string }) => (
   <div className={cn("flex flex-col gap-1.5", className)}><Label>{label}</Label>{children}{error && <p className="text-xs text-danger">{error}</p>}</div>
 );
-const Sel = (p: React.ComponentProps<"select">) => <select {...p} className={cn("h-9 rounded-lg border border-input bg-card px-3 text-sm", p.className)} />;
+/** Native select dressed as the shadcn trigger (one select look; keeps `selectOption` in tests working). */
+const Sel = (p: Omit<React.ComponentProps<"select">, "size">) => <NativeSelect {...p} wrapperClassName="w-full" />;
 
 /* ───────── + Supplier ───────── */
 export function AddSupplierSheet({ line, open, onOpenChange }: { line: OpsLine; open: boolean; onOpenChange: (o: boolean) => void }) {
@@ -129,7 +132,7 @@ export function LogQuoteSheet({ line, participation, open, onOpenChange }: { lin
       {!participation && (
         <Field label={S.board.col.supplier}><Sel value={pid} onChange={(e) => setPid(e.target.value)} data-testid="quote-participation"><option value="">—</option>{line.participations.map((p) => <option key={p.id} value={p.id}>{p.supplier.legalName}</option>)}</Sel></Field>
       )}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label={S.quote.currency}><Sel value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value })} data-testid="quote-currency">{["USD", "CNY", "EUR"].map((c) => <option key={c}>{c}</option>)}</Sel></Field>
         <Field label={S.quote.unit} error={unitMismatch ? S.quote.unitMismatch : undefined}><Sel value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} data-testid="quote-unit">{UNITS.map((u) => <option key={u}>{u}</option>)}</Sel></Field>
         <Field label={S.quote.packQty}><Input value={f.packQty} onChange={(e) => setF({ ...f, packQty: e.target.value })} inputMode="numeric" className="font-mono" data-testid="quote-pack" /></Field>
@@ -137,14 +140,19 @@ export function LogQuoteSheet({ line, participation, open, onOpenChange }: { lin
         <Field label={S.quote.port}><Input value={f.port} onChange={(e) => setF({ ...f, port: e.target.value })} data-testid="quote-port" /></Field>
         <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" className="accent-green-600" checked={f.uncertain} onChange={(e) => setF({ ...f, uncertain: e.target.checked })} />{S.quote.uncertain}</label>
         <Field label={S.quote.moq}><Input value={f.moq} onChange={(e) => setF({ ...f, moq: e.target.value })} inputMode="numeric" className="font-mono" data-testid="quote-moq" /></Field>
-        <Field label={S.quote.lead}><Input value={f.lead} onChange={(e) => setF({ ...f, lead: e.target.value })} inputMode="numeric" className="font-mono" data-testid="quote-lead" /></Field>
-        <Field label={S.quote.leadMax}><Input value={f.leadMax} onChange={(e) => setF({ ...f, leadMax: e.target.value })} inputMode="numeric" className="font-mono" /></Field>
-        <Field label={S.quote.valid}><Input type="date" value={f.valid} onChange={(e) => setF({ ...f, valid: e.target.value })} className="font-mono" data-testid="quote-valid" /></Field>
-        <Field label={S.quote.received}><Input type="date" value={f.received} onChange={(e) => setF({ ...f, received: e.target.value })} className="font-mono" /></Field>
+        <Field label="Lead time (days)">
+          <div className="flex items-center gap-2">
+            <Input value={f.lead} onChange={(e) => setF({ ...f, lead: e.target.value })} inputMode="numeric" className="font-mono" placeholder="20" aria-label={S.quote.lead} data-testid="quote-lead" />
+            <span className="text-muted-foreground">–</span>
+            <Input value={f.leadMax} onChange={(e) => setF({ ...f, leadMax: e.target.value })} inputMode="numeric" className="font-mono" placeholder="30" aria-label={S.quote.leadMax} />
+          </div>
+        </Field>
+        <Field label={S.quote.valid}><DateInput value={f.valid} onChange={(e) => setF({ ...f, valid: e.target.value })} data-testid="quote-valid" /></Field>
+        <Field label={S.quote.received}><DateInput value={f.received} onChange={(e) => setF({ ...f, received: e.target.value })} /></Field>
         <Field label={S.quote.weight}><Input value={f.weight} onChange={(e) => setF({ ...f, weight: e.target.value })} inputMode="decimal" className="font-mono" /></Field>
-        <Field label={S.quote.terms} className="sm:col-span-2"><Input value={f.terms} onChange={(e) => setF({ ...f, terms: e.target.value })} placeholder="T/T 30/70" /></Field>
+        <Field label={S.quote.terms}><Input value={f.terms} onChange={(e) => setF({ ...f, terms: e.target.value })} placeholder="e.g. T/T 30/70" /></Field>
         <Field label={S.quote.carton}><Input value={f.carton} onChange={(e) => setF({ ...f, carton: e.target.value })} /></Field>
-        <Field label={S.quote.deviations} className="sm:col-span-3"><Textarea rows={2} value={f.deviations} onChange={(e) => setF({ ...f, deviations: e.target.value })} placeholder="none at spec thickness" /></Field>
+        <Field label={S.quote.deviations} className="sm:col-span-2"><Textarea rows={2} value={f.deviations} onChange={(e) => setF({ ...f, deviations: e.target.value })} placeholder="e.g. none at spec thickness" /></Field>
       </div>
       <div>
         <div className="mb-2 flex items-center justify-between"><Label>{S.quote.breaks}</Label><Button type="button" size="sm" variant="ghost" onClick={() => setBreaks((b) => [...b, { minQty: "", price: "" }])} data-testid="add-break">{S.quote.addBreak}</Button></div>
@@ -212,7 +220,7 @@ export function NotesSheet({ participation, open, onOpenChange }: { participatio
     <FormShell open={open} onOpenChange={onOpenChange} eyebrow={participation.supplier.ref} title={`${S.board.editNote} · ${participation.supplier.legalName}`} submitLabel={S.common.save} pending={pending}
       onSubmit={async () => { const r = await run(() => updateParticipationAction({ participationId: participation.id, notes: notes || null, lastContactAt: last && last !== participation.lastContactAt?.slice(0, 10) ? `${last}T09:00:00Z` : null, dontBump }), { success: "Note saved" }); return r ? undefined : false; }}>
       <Field label={S.board.col.notes}><Textarea rows={5} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="MOQ, breaks, payment, certs, “cannot make”…" data-testid="notes-text" /></Field>
-      <Field label="Last contact"><Input type="date" value={last} onChange={(e) => setLast(e.target.value)} className="font-mono" /></Field>
+      <Field label="Last contact"><DateInput value={last} onChange={(e) => setLast(e.target.value)} /></Field>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="accent-green-600" checked={dontBump} onChange={(e) => setDontBump(e.target.checked)} />{S.board.dontBump}</label>
       <div className="text-xs text-muted-foreground">Status: <ParticipationChip status={participation.status} /> {participation.reason && <span>· {participation.reason}</span>}</div>
     </FormShell>

@@ -43,10 +43,20 @@ export const ProfileInput = z.object({ name: z.string().trim().min(2, "At least 
 export type ProfileInput = z.input<typeof ProfileInput>;
 
 /** SPEC F-01: ≥ 10 chars, ≥ 1 letter, ≥ 1 digit; confirm equals. Checked client-side before Better Auth `changePassword`. */
+/** QA-41: one message at a time, in the order the user fixes them (length first). Shared with reset/invite pages. */
+export function passwordProblem(v: string): string | null {
+  if (v.length < 10) return "At least 10 characters";
+  if (v.length > 128) return "At most 128 characters";
+  if (!/[A-Za-z]/.test(v)) return "Include at least one letter";
+  if (!/\d/.test(v)) return "Include at least one digit";
+  return null;
+}
+export const NewPasswordSchema = z.string().superRefine((v, c) => { const p = passwordProblem(v); if (p) c.addIssue({ code: "custom", message: p }); });
+
 export const PasswordInput = z
   .object({
     currentPassword: z.string().min(1, "Enter your current password"),
-    newPassword: z.string().min(10, "At least 10 characters").regex(/[A-Za-z]/, "Include at least one letter").regex(/\d/, "Include at least one digit"),
+    newPassword: NewPasswordSchema,
     confirm: z.string(),
   })
   .strict()

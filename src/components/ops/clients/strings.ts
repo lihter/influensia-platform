@@ -16,7 +16,7 @@ export const S = {
   title: "Clients",
   count: (n: number) => `${n} client${n === 1 ? "" : "s"}`,
   newClient: "Client",
-  settingsLink: "Pricing & settings",
+  settingsLink: "Pricing rules",
   search: "Search clients…",
   col: { name: "Client", country: "Country", users: "Users", mode: "Mode", display: "Display", language: "Lang", currency: "Cur", incoterm: "Incoterm", openLines: "Active lines", openOrders: "Orders", last: "Last activity", partner: "Partner" },
   empty: { title: "No clients yet", body: "Create the first client account — the invite writes an outbox row you can inspect under Outbox." },

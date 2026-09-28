@@ -5,7 +5,8 @@ import { useTranslations } from "next-intl";
 import { Loader2 } from "lucide-react";
 import type { OpsLine } from "@/server/ops/participations";
 import type { LineState } from "@/db/enums";
-import { PageHeader } from "@/components/shared/page-header";
+import { PageHeader, EyebrowLink } from "@/components/shared/page-header";
+import { initials } from "@/lib/labels";
 import { StateChip, MilestoneChip, ExceptionChip, UtilityBadge } from "@/components/shared/chips";
 import { Age } from "@/components/shared/formatters";
 import { FormShell } from "@/components/shared/form-shell";
@@ -30,23 +31,25 @@ function stagePrimary(line: OpsLine): { label: string; tab: Tab } | null {
 
 export function LineHeader({ line, tab, me }: { line: OpsLine; tab: Tab; me: { id: string; role: string } }) {
   const ts = useTranslations("state");
+  const tm = useTranslations("milestone");
   const primary = stagePrimary(line);
   const base = `/ops/lines/${line.ref}`;
+  const sameWord = ts(line.state).toLowerCase() === tm(line.milestone).toLowerCase();
   return (
     <PageHeader
       sticky
-      eyebrow={<span className="font-mono">{line.request.ref} · {line.org.name.toUpperCase()}{line.request.clientRef ? ` · ${line.request.clientRef}` : ""}</span>}
-      title={<span><span className="font-mono text-muted-foreground">{String(line.lineNo).padStart(2, "0")}</span> · {line.name}</span>}
-      titleSuffix={<span data-testid="line-ref">{line.ref}</span>}
+      crumbs={[{ href: "/ops/requests", label: "Requests" }, { href: `/ops/requests/${line.request.ref}`, label: <span className="font-mono">{line.request.ref}</span> }, { label: <span className="font-mono" data-testid="line-ref">{line.ref}</span> }]}
+      eyebrow={<><EyebrowLink href={`/ops/clients/${line.org.id}`}>{line.org.name}</EyebrowLink>{line.request.clientRef && <span className="normal-case tracking-normal"> · Client ref <span className="font-mono">{line.request.clientRef}</span></span>}</>}
+      title={<span><span className="font-mono font-normal text-muted-foreground">{String(line.lineNo).padStart(2, "0")} ·</span> {line.name}</span>}
       meta={
         <>
-          <StateChip state={line.state} stale={line.stale} />
-          <MilestoneChip milestone={line.milestone} waitingOnClient={line.waiting.party === "client"} />
+          <span data-testid="line-state" data-state={line.state} className="inline-flex"><StateChip state={line.state} stale={line.stale} /></span>
+          {!sameWord && <MilestoneChip milestone={line.milestone} waitingOnClient={line.waiting.party === "client"} />}
           {line.exception && <ExceptionChip exception={line.exception} />}
           {line.isRepeat && <UtilityBadge kind="repeat">Repeat</UtilityBadge>}
           {line.specVersion && <UtilityBadge kind="version">v{line.specVersion} frozen</UtilityBadge>}
           <span className="inline-flex items-center gap-1.5 text-xs text-ink-2">
-            <span className={cn("flex size-6 items-center justify-center rounded-full bg-section-alt text-2xs font-semibold", line.agent?.id === me.id && "ring-2 ring-green-600")}>{line.agent ? line.agent.name.slice(0, 2).toUpperCase() : "—"}</span>
+            <span className={cn("flex size-6 items-center justify-center rounded-full bg-section-alt text-2xs font-semibold", line.agent?.id === me.id && "ring-2 ring-green-600")}>{line.agent ? initials(line.agent.name) : "—"}</span>
             {line.agent?.name ?? S.header.unassigned}
           </span>
           <span className="text-xs text-muted-foreground">{S.header.lastChange} <Age since={line.lastStateChangeAt} stale={line.stale} />{line.stale && <span className="ml-1 text-warning">· {S.header.stale}</span>}</span>
@@ -60,14 +63,13 @@ export function LineHeader({ line, tab, me }: { line: OpsLine; tab: Tab; me: { i
         </>
       }
       tabs={
-        <nav className="-mb-px flex gap-6 overflow-x-auto border-b border-border" aria-label="Line tabs" data-testid="line-tabs">
+        <nav className="flex gap-6 overflow-x-auto" aria-label="Line tabs" data-testid="line-tabs">
           {TABS.map((t) => (
             <Link key={t} href={`${base}?tab=${t}`} aria-current={t === tab ? "page" : undefined} data-tab={t}
               className={cn("whitespace-nowrap border-b-2 pb-3 pt-2 text-sm transition-colors duration-[120ms]", t === tab ? "border-green-600 font-semibold text-foreground" : "border-transparent text-ink-2 hover:text-foreground")}>
               {TAB_LABELS[t]}{t === "sourcing" && <span className="ml-1.5 font-mono text-xs text-muted-foreground">{line.participations.length}</span>}
             </Link>
           ))}
-          <span className="ml-auto self-center pb-2 font-mono text-2xs text-muted-foreground" data-testid="line-state" data-state={line.state}>{ts(line.state)}</span>
         </nav>
       }
     />
@@ -77,7 +79,8 @@ export function LineHeader({ line, tab, me }: { line: OpsLine; tab: Tab; me: { i
 function ChangeStateSheet({ line, isAdmin }: { line: OpsLine; isAdmin: boolean }) {
   const ts = useTranslations("state");
   const { run, pending } = useAction();
-  const [to, setTo] = React.useState<LineState | "">("");
+  // QA-07/QA-16b: preselect the first legal move so Submit never silently does nothing
+  const [to, setTo] = React.useState<LineState | "">(line.allowedTransitions[0] ?? "");
   const [note, setNote] = React.useState("");
   const [override, setOverride] = React.useState(false);
   const [reason, setReason] = React.useState("");
@@ -89,19 +92,19 @@ function ChangeStateSheet({ line, isAdmin }: { line: OpsLine; isAdmin: boolean }
       open={open} onOpenChange={setOpen} eyebrow={line.ref} title={S.header.changeState} submitLabel={S.header.changeState} pending={pending}
       onSubmit={async () => {
         if (!to) return false;
-        const r = await run(() => changeLineStateAction({ lineId: line.id, to, note: note || null, override: override || undefined, reason: reason || null }), { success: (d) => `${line.ref} → ${d.to.replace(/_/g, " ")}` });
+        const r = await run(() => changeLineStateAction({ lineId: line.id, to, note: note || null, override: override || undefined, reason: reason || null }), { success: (d) => `${line.ref} → ${ts(d.to as LineState)}` });
         return r ? undefined : false;
       }}
     >
       <div className="flex flex-col gap-2">
         <Label>{S.header.allowed}</Label>
         {options.length === 0 && <p className="text-sm text-muted-foreground">{S.header.none}</p>}
+        {options.length > 0 && !to && <p className="text-xs text-muted-foreground" data-testid="change-state-hint">Pick the state to move to.</p>}
         <div role="radiogroup" className="sheet">
           {options.map((s) => (
             <label key={s} className={cn("sheet-row flex cursor-pointer items-center gap-3 text-sm hover:bg-surface-sunken", to === s && "bg-green-50")}>
               <input type="radio" name="to" value={s} checked={to === s} onChange={() => setTo(s)} className="accent-green-600" />
               <span className="font-medium text-foreground">{ts(s)}</span>
-              <span className="ml-auto font-mono text-2xs text-muted-foreground">{s}</span>
             </label>
           ))}
         </div>

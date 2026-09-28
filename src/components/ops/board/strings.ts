@@ -110,7 +110,7 @@ export const S = {
     rfqFile: "RFQ file (optional)",
     rfqHint: "Generating the RFQ xlsx is out of scope for this build — record that it was sent.",
     search: "Search by name, 中文名 or contact",
-    orCreate: "…or create inline",
+    orCreate: "Create new supplier",
     legalName: "Legal name",
     cnName: "中文名 (optional)",
     city: "City (optional)",

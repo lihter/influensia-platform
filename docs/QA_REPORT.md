@@ -169,3 +169,50 @@ The only "slow" feel comes from QA-02 and QA-16, where the UI does nothing and l
 - The server ran on port 3201 with `AUTH_RATE_LIMIT=off`, so login throttling (AC-AUTH-09) was not assessed. Per RUNBOOK §7 it is a known gap: 6 wrong passwords followed by the right one still logs in.
 - **Known gaps confirmed, not counted separately:** `/invite/[token]`, `/reset-password`, `/ops/lines/[ref]/preview`, `/ops/lines/[ref]/samples`, `/api/app/**` JSON routes, R2 and Resend.
 - The server was stopped at the end (only the 3201 process). Throwaway scripts are in `/tmp/qa/`.
+
+---
+
+## Fix status — FIX-A (logic, anonymity, state machine, seed)
+
+Status of every issue FIX-A handled. **Fixed** means the server/logic side is done and covered by unit tests (`tests/unit/leak-check.test.ts`, `fix-pure.test.ts`, `fix-flows.test.ts`, the flows test seeds its own PGlite). **Fixed (server)** means the UI owner still has to render a new field or action (contracts in `docs/FIX_PHASE.md` → "Contracts (FIX-A)").
+
+| ID | Status | What changed / reason |
+|---|---|---|
+| QA-01 | Fixed | Leak check now catches contact first names and every contact-name token (≥ 3 chars, stopword-guarded, word boundaries), CN short names (源拓 / 源拓包装), EN short names and split spellings (Yuantuo / Yuan-tuo), 李小姐 / 王先生 / 张总 / 老王 / "Mr Wang", and supplier cities in a factory context ("Linyi factory", "our factory in Dongguan"; ports only right next to a factory word). False-positive guards are tested (time/Tim, Sunday/Sun, leak-proof, card sleeves, "via Shenzhen"). |
+| QA-04 | Fixed | One client-visible "Order confirmed — we're preparing your invoice". Line mirror events are history-only, with no second order `state_changed`. Deposit/fee `dueOn` stays empty until the PI is published, and the PI publish posts "Invoice PI-… is ready — deposit and fee due …". The `order_confirmed` sub-label now reads "Preparing your invoice". Seed fixed too. |
+| QA-05 | Fixed | Reorder fast path: when the previous supplier's latest quote is still valid, the line is created in `negotiating`, with the participation copied as `selected`, the quote copied and a draft offer v1 prefilled from the last accepted offer (no sample). Otherwise the line goes to `in_review`. The ops email is titled "Repeat order … from KOFF (1 line)". |
+| QA-06 | Fixed | The port is prefilled from a real loading port: the quote port if it is one, else the supplier's port list, else empty. It never uses the inland factory city. The ops read model has `offerDefaults`, and the builder has a datalist of the 7 ports. Offer send leak-checks all fields including Port in factory context, so "Linyi" is blocked. |
+| QA-07 | Fixed | A logged quote in `spec_frozen`, `cost_target_price` or `rfq_out` walks the line to `quotes_in` and auto-records the RFQ if missing. Mark RFQ sent, shortlist/negotiate and offer send catch up the same way. The disabled "Send offer" shows `sendOfferBlockedReason`. Change state preselects the first legal target and returns a message for an illegal target or an override without a reason. |
+| QA-08 | Fixed (server) | `requestSpecChangeAction` creates a `change_request` comment, sets exception `change_requested` and sends an ops email. `askAboutRequestAction` posts a question on the request and emails the agents. `canRequestChange` is on the line DTO. FIX-B builds the UI. |
+| QA-09 | Fixed | Real reset: Better Auth token → `auth_password_reset` outbox email with an absolute `/reset-password?token=` link → the reset page sets the password and revokes sessions. `/invite/[token]` is a working "set your password" page (7-day token, single use). No enumeration. |
+| QA-10 | Fixed | Range items get an agent: the agent working that factory for this client, else the client's last agent, else the range creator. Catalog requests are assigned and moved to `in_review`. "Unassigned" means any open line without an owner, in the dashboard and in Queue, and unassigned rows are no longer listed under "Waiting on us". |
+| QA-11 | Fixed (server) | `offerOutcome` is on the line, list and dashboard DTOs. `subLabel` is truthful: "We're revising your price", "Offer declined — we'll be in touch" or "Price expired — new price coming". |
+| QA-12 | Fixed (server) | The milestone email for `offer_accepted` reads "…: we're preparing your order confirmation". `milestoneLabel` ("Order being prepared") is on the DTOs for the chip. **Note for the lead:** e2e `board.spec.ts:171` expects the chip to say "Order confirmed"; it needs updating if FIX-B renders `milestoneLabel`. |
+| QA-13 | Fixed | Quantity is capped at 10 million with a friendly message. The request number is now taken inside the transaction, so a failure burns no number. Every integer in ops actions is bounded. |
+| QA-14 | Partly fixed | Server: components are bounded, non-negative and human-messaged. Left: the UI parser `parsePriceE2` in `components/ops/board/pure.ts` (FIX-C) strips the "-" sign and letters before the server sees them. |
+| QA-15 | Fixed | Zod default messages are replaced server-side with field sentences ("MOQ can't be negative", "Uplift % must be at most 500", "Price breaks: add at least one row"). `ActionResult.message` gives one toast sentence. |
+| QA-16 | Fixed (a, b, d) | a) Forwarder errors come back as human field errors. b) Change state preselects a target and explains an illegal one. d) The send-offer reason is shown. c) (WhatsApp disabled hint) is UI → FIX-C. |
+| QA-17 | Fixed | Paid on, inspected on, shipped, arrived and delivered cannot be in the future. PO / start-production ex-works ETA cannot be in the past. |
+| QA-18 | Fixed (server) | `artworkDue[].dieline` gives the published dieline before any artwork upload. |
+| QA-19 | Fixed | Corrupt or renamed images and fake PDFs return `E_VALIDATION` with `errors.file` ("This file isn't a valid image — use a JPG, PNG or WebP"), not a 500. |
+| QA-22 | Fixed | Sending an option with a required sample needs a sample cost (0 if free) and a payer. |
+| QA-23 | Fixed | The "Factory F-nnnn" label is only on lines created from a range. "More from this factory" appears only once the line is on an order. |
+| QA-25 | Fixed | Mark delivered sets customs to "cleared" (unless it is held) and completes the POs. Start production records the PO as issued. |
+| QA-26 | Deferred | A forced password change on first sign-in would break the agreed nudge flow (e2e F-01 signs in with the temp password and changes it in Settings). The invite link now gives a proper set-password page. Needs the lead's decision. |
+| QA-27 | Fixed | Dropped / cannot-make participations are rejected as option sources (server) and hidden in the builder. |
+| QA-28 | Fixed (server) | `onHoldReason` is on the line DTO. |
+| QA-29 | Fixed | "Since" for needs-input is the question time (ops + client). Unassigned rows appear only under Unassigned. |
+| QA-30 | Fixed | "Delivery confirmed" no longer repeats the note, which stays as the comment. |
+| QA-31 | Fixed (server) | `specFields` returns raw keys for the label map. The catalog spec uses `specKeyLabel` / `specValueLabel` ("Total load", "Yes"). |
+| QA-35 | Fixed (seed) | The forwarder is "Rohlig Suus" (no "(client)"). The visibility badge and "Sent from the portal" are UI → FIX-B. |
+| QA-40 | Fixed | Correct plural, client name in the request / range / catalog / repeat subjects, "Repeat order" title. Outbox log and auth emails carry absolute URLs. Subject fallbacks use the label map. |
+| QA-41 | Fixed | Password rules report one problem at a time, length first (shared `passwordProblem`). |
+| QA-42 | Fixed | An inline supplier with only a legal name creates no empty contact. |
+| QA-43 | Fixed | The range item unit must be one of the units. |
+| QA-45 | Fixed | On-time = ex-works ship date ≤ the PO's promised ex-works ETA, which is what the label says. |
+| QA-46 | Fixed | The download filename comes from the documents row; the `filename` query is ignored. |
+| QA-47 | Fixed | A new offer version starts from the previous version's options, port, note and incoterm (minimal edit in `offer-builder.tsx`). |
+| QA-49 | Fixed | Payments are always ordered Deposit, Fee, Balance, Sample (ops + client). |
+| QA-52 | Fixed (seed) | Piotr's references are `P312-nn`, not `KOFF-312-nn`. |
+| UX: seed/timeline | Fixed | Every timeline read model collapses repeated sentences within 10 minutes; request pages collapse within the same day. The seed writes "Spec confirmed: 66×91 mm, …" per line at staggered times, with natural event times. Catalog images are clean generated product cards (icon, name, MOQ; no "placeholder/seed"). Canary docs now have neutral names (`quote-2026-09-12.xlsx`, `quote-2026-09-12-copy.xlsx`) with the canary text inside. Only the canary's own price list is still named `ZZLEAKTEST-…`. |
+| UX: raw values | Fixed (server text) | Ops activity reads "Piotr invited as owner". Ops feed and outbox subjects use the label map for states, participation, exceptions, documents and templates. Decline reasons are human. Read models keep returning raw enums for the UI label map. |

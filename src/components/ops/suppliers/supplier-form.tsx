@@ -10,6 +10,7 @@ import { SUPPLIER_TYPE_VERDICTS, VERDICT_SOURCES, SUPPLIER_GRADES, CONTACT_CHANN
 import { FormShell } from "@/components/shared/form-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -140,7 +141,7 @@ export function SupplierForm({ mode, initial, supplierId, isAdmin, trigger, onCr
           <Input id="uscc" value={v.uscc} onChange={(e) => set("uscc", e.target.value.toUpperCase())} className="font-mono" maxLength={18} aria-invalid={!!errors.uscc} />
         </FieldRow>
         <FieldRow label="Registered (optional)" htmlFor="registeredAt" error={errors.registeredAt}>
-          <Input id="registeredAt" type="date" value={v.registeredAt} onChange={(e) => set("registeredAt", e.target.value)} className="font-mono" />
+          <DateInput id="registeredAt" value={v.registeredAt} onChange={(e) => set("registeredAt", e.target.value)} />
         </FieldRow>
         <FieldRow label="Capital (optional)" htmlFor="capital">
           <Input id="capital" value={v.capital} onChange={(e) => set("capital", e.target.value)} placeholder="5 M CNY" className="font-mono" />

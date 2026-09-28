@@ -6,9 +6,12 @@ import { ArrowRight, Search, Triangle, FileText, Inbox } from "lucide-react";
 import type { ClientRequestListDto, ClientListRowDto, ClientListTabDto } from "@/server/client/dto/requests";
 import { MILESTONES } from "@/db/enums";
 import { MilestoneChip, ExceptionChip, UtilityBadge } from "@/components/shared/chips";
-import { MilestoneBar } from "@/components/shared/milestone-stepper";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Qty, Ref, DateTime } from "@/components/shared/formatters";
+import { Qty, Ref } from "@/components/shared/formatters";
+import { fmtDateShort } from "@/lib/format-date";
+import { unitLabel } from "@/lib/labels";
+import { chipLabel, nextStepFor } from "../client-format";
+import { NextShort } from "../now-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -42,7 +45,7 @@ export function RequestsList({ dto, tab }: { dto: ClientRequestListDto; tab: Cli
   return (
     <div className="flex flex-col gap-5" data-testid="requests-list">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <nav className="-mx-4 flex gap-6 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0" aria-label="List tabs" role="tablist">
+        <nav className="-mx-4 flex gap-6 overflow-x-auto border-b border-border px-4 [mask-image:linear-gradient(to_right,black_85%,transparent)] sm:mx-0 sm:px-0 sm:[mask-image:none]" aria-label="List tabs" role="tablist">
           {TABS.map((t) => (
             <Link key={t} href={t === "active" ? "/app/requests" : `/app/requests?tab=${t}`} role="tab" aria-selected={t === tab} data-testid={`tab-${t}`}
               className={cn("relative inline-flex h-10 shrink-0 items-center gap-1.5 border-b-2 pb-3 pt-2 text-sm whitespace-nowrap transition-colors", t === tab ? "border-green-600 font-semibold text-foreground" : "border-transparent text-ink-2 hover:text-foreground")}>
@@ -68,40 +71,34 @@ export function RequestsList({ dto, tab }: { dto: ClientRequestListDto; tab: Cli
           {groups.map((g) => (
             <section key={g.key} data-list-group={g.key} aria-label={g.label}>
               <div className="mb-1.5 flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                {g.number !== undefined && <><span className="font-mono">{String(g.number).padStart(2, "0")}</span> ·</>} {g.label} <span className="font-mono">{g.rows.length}</span>
+                {g.label} <span className="font-mono font-medium">{g.rows.length}</span>
               </div>
               <ul className="sheet">
-                {g.rows.map((r) => (
-                  <li key={r.id} className="list-none">
-                    <Link href={r.href} className="sheet-row grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 transition-colors duration-[120ms] hover:bg-surface-sunken md:grid-cols-[minmax(0,1fr)_7rem_auto_6rem_11rem_auto]" data-testid="list-row" data-ref={r.ref}>
+                {g.rows.map((r) => {
+                  const step = nextStepFor({ milestone: r.milestone, state: r.state, waitingReason: r.waitingReason, exception: r.exception, offerOutcome: r.offerOutcome, sourcing: r.sourcingProgress, since: r.lastChangeAt, isRepeat: r.isRepeat, etaLabel: r.etaLabel });
+                  return (
+                    <li key={r.id} className="sheet-row relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 transition-colors duration-[120ms] hover:bg-surface-sunken md:grid-cols-[minmax(0,1fr)_7.5rem_10rem_10.5rem_1rem]" data-testid="list-row" data-ref={r.ref}>
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                           <Ref muted>{r.displayRef}</Ref>
+                          {!r.orderRef && !r.isDraft && <Link href={`/app/requests/${r.requestRef}`} className="relative z-10 font-mono text-xs text-muted-foreground underline-offset-[3px] hover:text-foreground hover:underline" data-testid="request-link">{r.requestRef} ›</Link>}
                           {r.isRepeat && <UtilityBadge kind="repeat">Repeat</UtilityBadge>}
                         </div>
-                        <div className="truncate text-sm font-medium text-foreground">{r.name}</div>
-                        <div className="text-xs text-ink-2 md:hidden">
-                          {r.qty !== null && <><Qty qty={r.qty} unit={r.unit} /> · </>}
-                          <span>{r.exceptionText ?? r.subLabel}</span>
-                        </div>
+                        <Link href={r.href} className="block truncate text-sm font-medium text-foreground after:absolute after:inset-0 after:content-['']" title={r.name}>{r.name}</Link>
+                        <div className="truncate text-xs text-ink-2" title={r.exceptionText ?? r.subLabel} data-testid="status-detail">{r.exceptionText ?? r.subLabel}</div>
                       </div>
-                      <div className="hidden text-right md:block">{r.qty !== null ? <Qty qty={r.qty} unit={r.unit} className="text-[13px] text-ink-2" /> : <span className="text-faint">—</span>}</div>
-                      <div className="flex flex-col items-end gap-1 md:items-start">
-                        <MilestoneChip milestone={r.milestone} waitingOnClient={!!r.waitingReason} />
-                        {r.exception && <ExceptionChip exception={r.exception} client />}
+                      <div className="hidden text-right md:block">{r.qty !== null ? <Qty qty={r.qty} unit={unitLabel(r.unit, r.qty)} className="text-[13px] text-ink-2" /> : null}</div>
+                      <div className="flex justify-end md:justify-start">
+                        {r.exception ? <ExceptionChip exception={r.exception} client /> : <MilestoneChip milestone={r.milestone} waitingOnClient={!!r.waitingReason} label={chipLabel(r)} />}
                       </div>
-                      <div className="hidden pt-2 md:block"><MilestoneBar milestone={r.milestone} /></div>
-                      <div className="hidden min-w-0 md:block">
-                        <p className="truncate text-xs text-ink-2" title={r.subLabel} data-testid="status-detail">{r.exceptionText ?? r.subLabel}</p>
-                        <p className="truncate font-mono text-xs text-muted-foreground">{r.etaLabel ?? <DateTime value={r.updatedAt} variant="short" />}</p>
+                      <div className="col-span-2 flex items-center justify-between gap-3 md:col-span-1 md:justify-end">
+                        <span className="text-xs text-ink-2 md:hidden">{r.qty !== null && <Qty qty={r.qty} unit={unitLabel(r.unit, r.qty)} />}</span>
+                        {step.short && !r.isDraft ? <NextShort step={step} className="font-mono" /> : <span className="font-mono text-xs text-muted-foreground">{r.isDraft ? "Draft" : `Updated ${fmtDateShort(r.updatedAt)}`}</span>}
                       </div>
-                      <div className="col-span-2 flex items-center justify-between text-xs text-ink-2 md:col-span-1 md:justify-end md:gap-2">
-                        <span className="font-mono md:hidden">{r.etaLabel ?? <DateTime value={r.updatedAt} variant="short" />}</span>
-                        <ArrowRight className="size-4 text-faint" />
-                      </div>
-                    </Link>
-                  </li>
-                ))}
+                      <ArrowRight className="hidden size-4 text-faint md:block" aria-hidden />
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           ))}

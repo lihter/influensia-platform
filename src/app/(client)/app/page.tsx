@@ -17,8 +17,11 @@ export default async function ClientDashboardPage() {
   return (
     <>
       <PageHeader
+        band
+        className="pb-4"
         eyebrow={dto.companyLabel}
-        title={t("title")}
+        title={dto.userName ? t("greeting", { name: dto.userName.replace(/\s*\(.*?\)\s*/g, " ").trim().split(/\s+/)[0] }) : "Your requests & orders"}
+        meta={<span>Your requests &amp; orders — everything you asked us to source, in one place.</span>}
         actions={<Button asChild size="lg" className="w-full md:hidden"><Link href="/app/requests/new"><Plus data-icon="inline-start" />{tn("newRequest")}</Link></Button>}
       />
       <ClientDashboardView dto={dto} />

@@ -51,8 +51,8 @@ test("ops order page: AC-OO-01/02, ETA change, publish + leak check, inspection 
   // AC-DOC-01
   const docs = page.getByTestId("section-documents");
   await expect(docs).toContainText("PI-ORD-2026-0312.pdf");
-  await expect(docs).toContainText("ZZLEAKTEST-quote.xlsx");
-  await expect(docs.locator("[data-testid=document-row]", { hasText: "ZZLEAKTEST-quote.xlsx" }).getByTestId("publish")).toHaveCount(0);
+  await expect(docs).toContainText("quote-2026-09-12-copy.xlsx");
+  await expect(docs.locator("[data-testid=document-row]", { hasText: "quote-2026-09-12-copy.xlsx" }).getByTestId("publish")).toHaveCount(0);
 
   // AC-OO-09: edit PO ETA → eta_changed on the timeline
   await page.getByTestId("edit-eta").click();
@@ -155,7 +155,7 @@ test("client order page: published doc downloadable, internal key 404, confirm d
   const internalKey = dl!.replace("/client/", "/internal/").split("?")[0];
   expect((await page.request.get(internalKey)).status()).toBe(404);
   // delivered → confirm
-  await expect(page.getByTestId("milestone-suffix")).toContainText("Delivered · 9 of 9");
+  await expect(page.getByTestId("milestone-suffix")).toContainText("Delivered"); // FIX-B: one status chip, no "· 9 of 9" suffix
   await page.getByTestId("confirm-delivery").first().click();
   await page.getByTestId("confirm-delivery-submit").click();
   await expect(page.getByTestId("confirm-delivery")).toHaveCount(0, { timeout: 30_000 });

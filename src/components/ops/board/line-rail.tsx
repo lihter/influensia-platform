@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { OpsLine } from "@/server/ops/participations";
 import { formatQty, formatUnitPrice, formatMoney } from "@/server/shared/money";
-import { formatDate } from "@/server/shared/dates";
+import { fmtDate as formatDate } from "@/lib/format-date";
+import { label } from "@/lib/labels";
 import { VisibilityBadge } from "@/components/shared/chips";
 import { UnitPrice } from "@/components/shared/formatters";
 
@@ -18,18 +19,19 @@ export function LineRail({ line }: { line: OpsLine }) {
   const mine = line.previousOrders.filter((o) => o.orgName === line.org.name);
   const others = line.previousOrders.filter((o) => o.orgName !== line.org.name);
   return (
-    <aside className="-my-6 border-l border-hairline-strong bg-section-alt px-5 py-6 xl:sticky xl:top-[7.5rem] xl:self-start" data-testid="line-rail">
+    <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:min-h-[calc(100dvh-10rem)] xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" data-testid="line-rail">
+      <div className="xl:sticky-under-header">
       <dl className="rounded-xl border border-border bg-card">
         {facts.map((f) => (
           <div key={f.label} className="flex items-baseline justify-between gap-3 border-b border-hairline-faint px-4 py-2.5 last:border-b-0">
             <dt className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{f.label}</dt>
-            <dd className="font-mono text-sm font-medium text-foreground">{f.value}</dd>
+            <dd className="text-right font-mono text-sm font-medium whitespace-nowrap text-foreground">{f.value}</dd>
           </div>
         ))}
       </dl>
       {line.product && (
         <div className="mt-4 text-xs text-ink-2">
-          Product <Link href={`/ops/products/${line.product.ref}`} className="link font-mono">{line.product.ref}</Link> · {line.product.visibility}
+          Product <Link href={`/ops/products/${line.product.ref}`} className="link font-mono">{line.product.ref}</Link> · {label("productVisibility", line.product.visibility)}
           {line.product.referencePriceMinorE2 && <span className="ml-1 font-mono">· ref {formatUnitPrice({ minorE2: line.product.referencePriceMinorE2, currency: "USD" })}</span>}
         </div>
       )}
@@ -61,6 +63,7 @@ export function LineRail({ line }: { line: OpsLine }) {
       </section>
       <div className="mt-6">
         <Link href={`/ops/lines/${line.ref}?tab=timeline#whatsapp`} className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-input bg-card text-sm font-medium hover:bg-surface-sunken">Log WhatsApp</Link>
+      </div>
       </div>
     </aside>
   );

@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Age, DateTime, Money } from "@/components/shared/formatters";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { FilterToggle } from "@/components/shared/filter-toggle";
 
 /** F-22 /ops/orders — DataTable with search, client + stale filters (DESIGN §5.4 toolbar on a section-alt band). */
 export function OrdersTable({ rows }: { rows: OpsOrderRow[] }) {
@@ -19,9 +20,8 @@ export function OrdersTable({ rows }: { rows: OpsOrderRow[] }) {
   const data = rows.filter((r) => (!staleOnly || r.stale) && (!client || r.orgName === client) && (state === "all" || (state === "delivered" ? r.milestone === "delivered" : r.milestone !== "delivered")));
 
   const columns: DataTableColumn<OpsOrderRow>[] = [
-    { id: "ref", accessorKey: "ref", header: "Ref", meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={<span className="font-mono text-xs">{row.original.ref}</span>} sub={row.original.linesCount > 1 ? `${row.original.linesCount} lines` : undefined} /> },
-    { id: "name", accessorKey: "name", header: "Product", cell: ({ row }) => <PrimaryCell title={row.original.name} /> },
-    { id: "client", accessorKey: "orgName", header: "Client" },
+    { id: "ref", accessorKey: "ref", header: "Order", meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={<>{row.original.ref}{row.original.linesCount > 1 ? ` · ${row.original.linesCount} lines` : ""}</>} /> },
+    { id: "client", accessorKey: "orgName", header: "Client", cell: ({ row }) => <span className="block max-w-[16ch] truncate" title={row.original.orgName}>{row.original.orgName}</span> },
     { id: "state", accessorKey: "state", header: "State", cell: ({ row }) => <span className="inline-flex items-center gap-1.5"><StateChip state={row.original.state} stale={row.original.stale} />{row.original.exception && <ExceptionChip exception={row.original.exception} />}</span> },
     { id: "milestone", accessorKey: "milestone", header: "Milestone", cell: ({ row }) => <MilestoneChip milestone={row.original.milestone} waitingOnClient={row.original.waitingParty === "client"} /> },
     { id: "due", accessorKey: "dueMinor", header: "Due", meta: { numeric: true, strong: true }, cell: ({ row }) => (row.original.dueMinor ? <Money minor={row.original.dueMinor} currency={row.original.currency} strong /> : <span className="text-faint">—</span>) },
@@ -37,7 +37,7 @@ export function OrdersTable({ rows }: { rows: OpsOrderRow[] }) {
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search ref, product, client" className="h-8 pl-8 text-sm" aria-label="Search orders" />
         </div>
-        <div className="inline-flex h-8 items-center rounded-lg bg-muted p-[3px] text-xs" role="tablist" aria-label="State">
+        <div className="inline-flex h-8 items-center rounded-lg border border-hairline-strong bg-background p-[3px] text-xs" role="tablist" aria-label="State">
           {(["all", "active", "delivered"] as const).map((s) => (
             <button key={s} type="button" role="tab" aria-selected={state === s} onClick={() => setState(s)} className={cn("h-full rounded-md px-2.5 font-medium capitalize", state === s ? "bg-card text-foreground shadow-sm" : "text-ink-2")}>{s}</button>
           ))}
@@ -47,7 +47,7 @@ export function OrdersTable({ rows }: { rows: OpsOrderRow[] }) {
             <button key={c} type="button" aria-pressed={client === c} onClick={() => setClient(client === c ? null : c)} className={cn("h-7 rounded-full border px-2.5 text-xs font-medium transition-colors", client === c ? "border-foreground bg-foreground text-white" : "border-border bg-card text-ink-2 hover:bg-surface-sunken")}>{c}</button>
           ))}
         </div>
-        <label className="ml-auto flex items-center gap-2 text-xs text-ink-2"><input type="checkbox" checked={staleOnly} onChange={(e) => setStaleOnly(e.target.checked)} className="size-3.5 accent-green-600" />Stale only</label>
+        <FilterToggle on={staleOnly} onChange={setStaleOnly} className="ml-auto">Stale only</FilterToggle>
         <span className="font-mono text-xs text-muted-foreground">{data.length} orders</span>
       </div>
       <DataTable columns={columns} data={data} rowHref={(r) => r.href} isStale={(r) => r.stale} globalFilter={q} density="compact" className="rounded-t-none" initialSorting={[{ id: "last", desc: false }]} emptyState={<EmptyState title="No orders match these filters" className="py-8" />} data-testid="orders-table" />

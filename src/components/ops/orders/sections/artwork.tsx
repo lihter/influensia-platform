@@ -21,7 +21,7 @@ export function ArtworkSection({ d }: { d: OpsOrderDetail }) {
   return (
     <OrderSection id="artwork" number={3} title="Artwork" count={open}>
       {none && <p className="mb-3 text-sm text-muted-foreground">No artwork needed for this order.</p>}
-      <ul className="sheet">
+      <ul className="sheet bg-card">
         {d.artworks.map((a) => <ArtworkRow key={a.orderLineId} a={a} orderRef={d.order.ref} />)}
       </ul>
     </OrderSection>
@@ -35,7 +35,7 @@ function ArtworkRow({ a, orderRef }: { a: OpsArtwork; orderRef: string }) {
     <li className="sheet-row flex flex-col gap-3" data-testid="artwork-row" data-status={cur?.status ?? "none"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2"><Ref muted>{a.lineRef}</Ref>{!a.artworkRequired && <Badge variant="neutral">not required</Badge>}</div>
+          <div className="flex items-center gap-2"><Ref muted>{a.lineRef}</Ref>{!a.artworkRequired && <Badge variant="neutral">Not required</Badge>}</div>
           <p className="truncate text-sm font-medium text-foreground">{a.lineName}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -44,20 +44,21 @@ function ArtworkRow({ a, orderRef }: { a: OpsArtwork; orderRef: string }) {
         </div>
       </div>
       <div className="grid gap-3 text-sm md:grid-cols-2">
-        <div className="flex items-center gap-3 rounded-lg bg-section-alt px-3 py-2">
-          <FileText className="size-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 flex-1">
+        {/* file tile: icon | name (truncates) | badge | action — each in its own column, nothing overlaps (UX §ops order) */}
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-lg border border-hairline-faint bg-section-alt px-3 py-2">
+          <FileText className="size-4 text-muted-foreground" />
+          <div className="min-w-0">
             <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Dieline</div>
-            {a.dieline ? <a href={a.dieline.downloadUrl} className="link truncate text-sm" download>{a.dieline.filename}</a> : <span className="text-sm text-muted-foreground">none uploaded</span>}
+            {a.dieline ? <a href={a.dieline.downloadUrl} className="link block truncate text-sm" title={a.dieline.filename} download>{a.dieline.filename}</a> : <span className="text-sm text-muted-foreground">None uploaded</span>}
           </div>
-          {a.dieline && <VisibilityBadge visibility={a.dieline.visibility} />}
+          {a.dieline ? <VisibilityBadge visibility={a.dieline.visibility} /> : <span />}
           <DielineSheet orderLineId={a.orderLineId} orderRef={orderRef} />
         </div>
-        <div className="flex items-center gap-3 rounded-lg bg-section-alt px-3 py-2">
-          <FileText className="size-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 flex-1">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-lg border border-hairline-faint bg-section-alt px-3 py-2">
+          <FileText className="size-4 text-muted-foreground" />
+          <div className="min-w-0">
             <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Client artwork {cur ? `v${cur.version}` : ""}</div>
-            {cur?.file ? <a href={cur.file.downloadUrl} className="link truncate text-sm" download>{cur.file.filename}<span className="ml-1 font-mono text-xs text-muted-foreground">{formatBytes(cur.file.bytes)}</span></a> : <span className="text-sm text-muted-foreground">not uploaded yet</span>}
+            {cur?.file ? <a href={cur.file.downloadUrl} className="link flex min-w-0 items-baseline gap-1 text-sm" title={cur.file.filename} download><span className="truncate">{cur.file.filename}</span><span className="shrink-0 font-mono text-xs text-muted-foreground">{formatBytes(cur.file.bytes)}</span></a> : <span className="text-sm text-muted-foreground">Not uploaded yet</span>}
             {cur?.clientNote && <p className="mt-0.5 text-xs text-ink-2">“{cur.clientNote}”</p>}
           </div>
         </div>

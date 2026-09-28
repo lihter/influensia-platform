@@ -170,8 +170,9 @@ test("AC-NEW-05/06/07 — xlsx/csv import, fallback attach, save draft (not in q
   await page.getByTestId("save-draft").click();
   await page.waitForURL(/\/app\/requests\/REQ-2026-0327$/);
   await expect(page.getByTestId("send-draft")).toBeVisible();
-  await page.getByRole("tab", { name: /Documents/ }).click();
-  await expect(page.getByTestId("document-row")).toHaveCount(1);
+  // drafts have no Updates/History tabs; the attached file is listed in a Documents section
+  await expect(page.getByTestId("draft-documents").getByTestId("document-row")).toHaveCount(1);
+  await expect(page.getByTestId("draft-documents")).toContainText("weird.csv");
   await page.goto("/app/requests?tab=drafts");
   await expect(page.getByTestId("list-row")).toHaveCount(9);
   await login(page, "bogdan@influensia.ro");
@@ -192,7 +193,7 @@ test("AC-NEW-08 — agent creates a request on behalf of KOFF; visible to the KO
   await page.getByTestId("line-qty").first().fill("2000");
   await page.getByTestId("send-request").click();
   await page.waitForURL(/\/ops\/requests\/REQ-2026-0328/);
-  await expect(page.locator("[data-slot=badge]", { hasText: "WhatsApp" }).first()).toBeVisible();
+  await expect(page.locator("[data-source]", { hasText: "WhatsApp" }).first()).toBeVisible(); // FIX-C: plain source label with icon, not a badge
   await expect(page.getByTestId("timeline")).toContainText("2000 szt.");
   const drained = await page.request.get("/api/cron/outbox").then((r) => r.json());
   expect(drained.sent).toBe(3); // ops_new_request × 3, no client_request_received

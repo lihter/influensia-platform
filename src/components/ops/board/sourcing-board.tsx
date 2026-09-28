@@ -2,12 +2,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { ChevronDown, ChevronRight, Clock, Mail, MessageCircle, Globe, Phone, AlertTriangle, Paperclip, MoreHorizontal, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, Mail, MessageCircle, Globe, Phone, AlertTriangle, Paperclip, MoreHorizontal, Star, Plus } from "lucide-react";
 import type { OpsLine, OpsParticipation, OpsQuote } from "@/server/ops/participations";
 import type { ParticipationStatus } from "@/db/enums";
 import { formatUnitPrice, formatQty } from "@/server/shared/money";
-import { formatDate } from "@/server/shared/dates";
-import { ParticipationChip, MilestoneChip, StateChip } from "@/components/shared/chips";
+import { fmtDate as formatDate } from "@/lib/format-date";
+import { ParticipationChip } from "@/components/shared/chips";
+import { label } from "@/lib/labels";
+import { PriceStrip, type StripPoint } from "./price-strip";
 import { FactoryLabel } from "@/components/shared/factory-label";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -45,52 +47,49 @@ export function SourcingBoard({ line }: { line: OpsLine }) {
   const toggle = (set: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) => set((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const canRfq = line.state === "spec_frozen" || line.state === "cost_target_price";
   const buildHref = `/ops/lines/${line.ref}?tab=offer${selected.size ? `&parts=${[...selected].join(",")}` : ""}`;
-  const anyShortlisted = line.participations.some((p) => p.status === "shortlisted" || p.status === "selected");
+  const [hoveredId, setHoveredId] = React.useState<string | null>(null);
+  const pick = (id: string) => { document.querySelector(`[data-testid=board-row][data-pid="${id}"]`)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" }); setHoveredId(id); };
+  const stripPoints: StripPoint[] = line.participations.filter((p) => p.usdMinorE2 !== null).map((p) => ({ id: p.id, label: p.supplier.legalName, usdMinorE2: p.usdMinorE2 as number, status: p.status, flagged: p.flags.some((f) => f !== "excluded_status") }));
 
   return (
     <div className="flex flex-col gap-4" data-testid="sourcing-board">
-      {/* header strip */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        <span className="font-mono text-xs text-muted-foreground">{line.ref}</span>
-        <span className="font-medium">{line.name}</span>
-        <StateChip state={line.state} stale={line.stale} />
-        <span className="text-ink-2">{S.board.costFloor} <span className="font-mono font-medium text-foreground">{line.costModel ? usd(line.costModel.est_prod_cost_minor_e2) : "—"}</span></span>
-        <span className="text-ink-2">{S.board.target} {line.targetPriceMinorE2 ? <span className="font-mono font-medium text-foreground" data-testid="board-target">{usd(line.targetPriceMinorE2)} /{line.unit}</span> : <span className="inline-flex items-center gap-1 text-warning"><AlertTriangle className="size-3.5" />{S.board.noTarget}</span>}</span>
-        <span className="text-ink-2">Client: <span className="text-foreground">{line.org.name}</span></span>
-        <MilestoneChip milestone={line.milestone} waitingOnClient={line.waiting.party === "client"} />
-        {line.qty && <span className="font-mono text-xs text-muted-foreground">{formatQty(line.qty, line.unit)}</span>}
-      </div>
-
       {/* compare bar */}
-      <div className="rounded-t-xl border border-b-0 border-hairline-strong bg-section-alt px-4 py-3">
+      <div className="overflow-hidden rounded-t-xl border border-b-0 border-hairline-strong">
+      <div className="bg-section-alt px-4 py-3">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-1" data-testid="compare-strip">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1" data-testid="compare-strip">
+            <span className="text-ink-2">{S.board.costFloor} <span className="font-mono font-medium text-foreground">{line.costModel ? usd(line.costModel.est_prod_cost_minor_e2) : "—"}</span></span>
+            <span className="text-ink-2">{S.board.target} {line.targetPriceMinorE2 ? <span className="font-mono font-medium text-foreground" data-testid="board-target">{usd(line.targetPriceMinorE2)} /{line.unit}</span> : <span className="inline-flex items-center gap-1 text-warning"><AlertTriangle className="size-3.5" />{S.board.noTarget}</span>}</span>
+            {line.qty && <span className="text-ink-2">Qty <span className="font-mono font-medium text-foreground">{formatQty(line.qty, line.unit)}</span></span>}
+            <span className="h-4 w-px bg-hairline-strong" aria-hidden />
             <span className="text-ink-2">{S.board.bestClean} <span className="font-mono font-medium text-green-700">{c.bestClean ? usd(c.bestClean.usdMinorE2) : "—"}</span>{c.bestClean && <span className="text-muted-foreground"> ({c.bestClean.label})</span>}</span>
-            <span className="text-ink-2">{S.board.lowest} <span className="font-mono font-medium text-foreground">{c.lowestQuoted ? usd(c.lowestQuoted.usdMinorE2) : "—"}</span>{c.lowestQuoted && <span className="text-muted-foreground"> ({c.lowestQuoted.label}{c.lowestQuoted.excluded.length ? <span className="text-warning" title={c.lowestQuoted.excluded.join(", ")}>, {S.board.excluded}: {c.lowestQuoted.excluded.slice(0, 2).join(", ")}{c.lowestQuoted.excluded.length > 2 ? ` +${c.lowestQuoted.excluded.length - 2}` : ""}</span> : null})</span>}</span>
+            <span className="text-ink-2">{S.board.lowest} <span className="font-mono font-medium text-foreground">{c.lowestQuoted ? usd(c.lowestQuoted.usdMinorE2) : "—"}</span>{c.lowestQuoted && <span className="text-muted-foreground"> ({c.lowestQuoted.label}{c.lowestQuoted.excluded.length ? <span className="text-warning" title={c.lowestQuoted.excluded.join(", ")}>, {S.board.excluded}: {c.lowestQuoted.excluded.slice(0, 2).join(", ")}{c.lowestQuoted.excluded.length > 2 ? ` +${c.lowestQuoted.excluded.length - 2} more` : ""}</span> : null})</span>}</span>
             <span className="text-ink-2">{S.board.spread} <span className="font-mono font-medium text-foreground">{c.spread !== null ? `${c.spread}×` : "—"}</span></span>
             <span className="text-ink-2"><span className="font-mono font-medium text-foreground">{c.quotesCount}</span> quotes of <span className="font-mono font-medium text-foreground">{c.contactedCount}</span> contacted</span>
             <span className="text-ink-2"><span className={cn("font-mono font-medium", c.staleCount ? "text-warning" : "text-foreground")}>{c.staleCount}</span> stale</span>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={() => setAddOpen(true)} data-testid="add-supplier">{S.board.addSupplier}</Button>
+            <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} data-testid="add-supplier"><Plus />Supplier</Button>
             <Button size="sm" variant="outline" onClick={() => setQuoteFor({ open: true, p: null })} disabled={!line.participations.length} data-testid="log-quote">{S.board.logQuote}</Button>
-            <Button size="sm" variant="outline" onClick={() => setShortOpen(true)} disabled={!selected.size} data-testid="shortlist">{S.board.shortlist}{selected.size ? ` (${selected.size})` : ""}</Button>
+            <Button size="sm" variant="outline" onClick={() => setShortOpen(true)} disabled={!selected.size} title={selected.size ? undefined : "Tick suppliers in the table first"} data-testid="shortlist">{S.board.shortlist}{selected.size ? ` (${selected.size})` : ""}</Button>
             {canRfq && <Button size="sm" variant="outline" onClick={() => setRfqOpen(true)} data-testid="mark-rfq">{S.board.markRfq}</Button>}
-            <Button size="sm" variant={anyShortlisted || selected.size ? "default" : "outline"} asChild><Link href={buildHref} data-testid="build-offer">{S.board.buildOffer}</Link></Button>
+            {selected.size > 0 && <Button size="sm" variant="ghost" asChild><Link href={buildHref} data-testid="build-offer">{S.board.buildOffer} with {selected.size}</Link></Button>}
           </div>
         </div>
       </div>
+      <PriceStrip points={stripPoints} floorE2={line.costModel?.est_prod_cost_minor_e2 ?? null} targetE2={line.targetPriceMinorE2 ?? null} unit={line.unit} hoveredId={hoveredId} onHover={setHoveredId} onPick={pick} />
+      </div>
 
       {/* table */}
-      <div className="-mt-4 overflow-auto rounded-b-xl border border-border bg-card" style={{ maxHeight: "calc(100vh - 16rem)" }}>
+      <div className="scroll-shadow-x -mt-4 overflow-auto rounded-b-xl border border-border" style={{ maxHeight: "calc(100vh - 12rem)" }}>
         {line.participations.length === 0 ? (
           <EmptyState title={S.board.empty} body={`${S.board.emptyBody}${line.links.length ? ` Client links: ${line.links.map((l) => l.domain).join(", ")}.` : ""}`} action={<Button onClick={() => setAddOpen(true)}>{S.board.addSupplier}</Button>} />
         ) : (
           <table className="w-full border-separate border-spacing-0 text-sm" data-testid="board-table">
             <thead>
               <tr>
-                {[["", "w-8"], ["", "w-8"], [S.board.col.supplier, "sticky left-0 z-30"], [S.board.col.type, ""], [S.board.col.grade, "text-center"], [S.board.col.contact, ""], [S.board.col.status, ""], [S.board.col.price, "text-right"], [S.board.col.terms, ""], [S.board.col.usd, "text-right"], [S.board.col.last, "text-right"], [S.board.col.notes, ""], ["", "w-10"]].map(([h, cls], i) => (
-                  <th key={i} scope="col" className={cn("sticky top-0 z-20 h-9 bg-card px-3 text-left align-bottom text-2xs font-semibold uppercase tracking-[0.06em] whitespace-nowrap text-foreground rule-ink", cls)}>{h}</th>
+                {[["", "w-8"], ["", "w-8"], [S.board.col.supplier, "sticky left-0 z-30"], [`${S.board.col.type} · ${S.board.col.grade}`, ""], [S.board.col.contact, ""], [S.board.col.status, ""], [`${S.board.col.price} · terms`, "text-right"], [S.board.col.usd, "text-right"], [S.board.col.last, "text-right"], [S.board.col.notes, ""], ["", "w-10"]].map(([h, cls], i) => (
+                  <th key={i} scope="col" className={cn("sticky top-0 z-20 h-9 bg-card px-3 text-left align-middle text-2xs font-semibold uppercase tracking-[0.06em] whitespace-nowrap text-foreground rule-ink", cls)}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -101,18 +100,23 @@ export function SourcingBoard({ line }: { line: OpsLine }) {
                 const isOpen = expanded.has(p.id);
                 return (
                   <React.Fragment key={p.id}>
-                    <tr data-testid="board-row" data-status={p.status} data-supplier={p.supplier.ref}
-                      className={cn("group/row transition-colors duration-[120ms] hover:bg-surface-sunken", excluded && "opacity-60", p.isSelected && "bg-green-50 shadow-[inset_3px_0_0_var(--green-600)]", !p.isSelected && p.stale && "shadow-[inset_3px_0_0_var(--warning-border)]")}>
+                    <tr data-testid="board-row" data-status={p.status} data-supplier={p.supplier.ref} data-pid={p.id}
+                      onMouseEnter={() => setHoveredId(p.id)} onMouseLeave={() => setHoveredId(null)}
+                      className={cn("group/row transition-colors duration-[120ms] hover:bg-surface-sunken", hoveredId === p.id && "bg-surface-sunken", excluded && "opacity-60", p.isSelected && "bg-green-50 shadow-[inset_3px_0_0_var(--green-600)]", !p.isSelected && p.stale && "shadow-[inset_3px_0_0_var(--warning-border)]")}>
                       <td className="border-b border-hairline-faint px-2"><input type="checkbox" className="accent-green-600" checked={selected.has(p.id)} onChange={() => toggle(setSelected, p.id)} aria-label={`select ${p.supplier.legalName}`} /></td>
                       <td className="border-b border-hairline-faint px-1"><Button size="icon-xs" variant="ghost" aria-label="Expand" aria-expanded={isOpen} onClick={() => toggle(setExpanded, p.id)} data-testid="expand">{isOpen ? <ChevronDown /> : <ChevronRight />}</Button></td>
-                      <td className="sticky left-0 z-10 border-b border-hairline-faint bg-card px-3 py-2 group-hover/row:bg-surface-sunken">
+                      <td className={cn("sticky left-0 z-10 border-b border-hairline-faint bg-card px-3 py-2 group-hover/row:bg-surface-sunken", hoveredId === p.id && "bg-surface-sunken", p.isSelected && "bg-green-50")}>
                         <div className="max-w-[24ch]">
                           <div className="flex items-center gap-2"><span className="truncate font-medium text-foreground" title={p.supplier.legalName}>{p.supplier.legalName}</span></div>
                           <div className="flex items-center gap-2 truncate font-mono text-xs text-muted-foreground"><span>{p.supplier.ref}</span>{p.supplier.cnName && <span className="truncate font-sans" title={p.supplier.cnName}>{p.supplier.cnName}</span>}{p.supplier.factoryLabel && <FactoryLabel label={p.supplier.factoryLabel} disclosed={p.supplier.disclosed} />}</div>
                         </div>
                       </td>
-                      <td className={cn("border-b border-hairline-faint px-3 text-xs", (p.supplier.typeVerdict === "unchecked" || p.supplier.typeVerdict === "unknown") ? "text-faint" : "text-ink-2")}>{p.supplier.typeVerdict}</td>
-                      <td className="border-b border-hairline-faint px-3 text-center">{p.supplier.grade ? <span className="inline-flex size-5 items-center justify-center rounded-full border border-hairline-strong font-mono text-xs">{p.supplier.grade}</span> : <span className="text-faint">—</span>}</td>
+                      <td className="border-b border-hairline-faint px-3 text-xs whitespace-nowrap">
+                        <span className="inline-flex items-center gap-2">
+                          <span className={(p.supplier.typeVerdict === "unchecked" || p.supplier.typeVerdict === "unknown") ? "text-faint" : "text-ink-2"}>{label("supplierVerdict", p.supplier.typeVerdict)}</span>
+                          {p.supplier.grade && <span className="inline-flex size-5 items-center justify-center rounded-full border border-hairline-strong font-mono text-xs" title={`Grade ${p.supplier.grade}`}>{p.supplier.grade}</span>}
+                        </span>
+                      </td>
                       <td className="border-b border-hairline-faint px-3 text-xs">
                         {p.contact ? <span className="inline-flex max-w-[14ch] items-center gap-1.5" title={`${p.contact.name ?? ""} · ${CHANNEL_LABEL[p.contact.channel]}${p.contact.handle ? ` · ${p.contact.handle}` : ""}`}><ChannelIcon ch={p.contact.channel} /><span className="truncate">{p.contact.name ?? CHANNEL_LABEL[p.contact.channel]}</span></span> : <span className="text-faint">—</span>}
                       </td>
@@ -131,24 +135,27 @@ export function SourcingBoard({ line }: { line: OpsLine }) {
                         </DropdownMenu>
                         {p.reason && <div className="mt-0.5 max-w-[24ch] truncate text-2xs text-muted-foreground" title={p.reason}>{p.reason}</div>}
                       </td>
-                      <td className="border-b border-hairline-faint px-3 text-right font-mono text-[13px] tabular-nums text-ink-2" data-testid="price-cell">
+                      <td className="border-b border-hairline-faint px-3 text-right font-mono text-[13px] tabular-nums whitespace-nowrap text-ink-2" data-testid="price-cell">
                         {q && q.breaks.length ? (
                           <Tooltip><TooltipTrigger asChild><span>{money(q.breaks[0].unitPriceMinorE2, q.currency)} @ {compactQty(q.breaks[0].minQty)}{q.unit !== line.unit ? ` ${q.unit}` : ""}</span></TooltipTrigger>
                             <TooltipContent>{q.breaks.map((b) => `${formatQty(b.minQty)} → ${money(b.unitPriceMinorE2, q.currency)}/${q.unit}`).join(" · ")}{q.packQty ? ` · pack ${q.packQty}` : ""}</TooltipContent></Tooltip>
                         ) : <span className="text-faint">—</span>}
+                        {q && <div className="mt-0.5 max-w-[26ch] truncate font-sans text-2xs text-muted-foreground" title={terms(q)}>{terms(q)}</div>}
                       </td>
-                      <td className="border-b border-hairline-faint px-3 text-2xs text-ink-2 whitespace-nowrap">{terms(q)}</td>
-                      <td className="border-b border-hairline-faint px-3 text-right font-mono text-[13px] tabular-nums" data-testid="usd-cell">
+                      <td className="border-b border-hairline-faint px-3 text-right font-mono text-[13px] tabular-nums whitespace-nowrap" data-testid="usd-cell">
                         {p.usdMinorE2 !== null ? (
                           <Tooltip><TooltipTrigger asChild><span className={cn("font-medium", p.isBestClean ? "text-green-700" : excluded ? "text-muted-foreground line-through" : "text-foreground")}>{usd(p.usdMinorE2)}</span></TooltipTrigger>
                             <TooltipContent>{q?.fxRate && q.fxRate !== 1 ? `${q.fxRate} @ ${q.fxDate}` : "USD"}{p.flags.length ? ` · ${p.flags.map((f) => FLAG_LABEL[f] ?? f).join(", ")}` : " · clean"}</TooltipContent></Tooltip>
                         ) : <span className="text-faint">—</span>}
-                        {p.flags.length > 0 && <div className="mt-0.5 flex flex-wrap justify-end gap-1">{p.flags.filter((f) => f !== "excluded_status").map((f) => <span key={f} className={cn("rounded border px-1 font-sans text-[10px] font-medium", f === "deviation" || f === "moq_above_qty" ? "border-neutral-border text-neutral" : "border-warning-border bg-warning-wash text-warning")} data-flag={f}>{FLAG_LABEL[f] ?? f}</span>)}</div>}
+                        {p.flags.filter((f) => f !== "excluded_status").length > 0 && (
+                          <Tooltip><TooltipTrigger asChild><span className="ml-1.5 inline-flex translate-y-0.5 text-warning" aria-label={`Flags: ${p.flags.filter((f) => f !== "excluded_status").map((f) => FLAG_LABEL[f] ?? f).join(", ")}`} data-flags={p.flags.join(",")}><AlertTriangle className="size-3.5" /></span></TooltipTrigger>
+                            <TooltipContent>{p.flags.filter((f) => f !== "excluded_status").map((f) => FLAG_LABEL[f] ?? f).join(" · ")}</TooltipContent></Tooltip>
+                        )}
                       </td>
-                      <td className="border-b border-hairline-faint px-3 text-right font-mono text-[13px] tabular-nums" data-testid="last-cell">
+                      <td className="border-b border-hairline-faint px-3 text-right font-mono text-[13px] tabular-nums whitespace-nowrap" data-testid="last-cell">
                         {p.daysSinceContact !== null ? <span className={cn("inline-flex items-center gap-1", p.stale ? "font-medium text-warning" : "text-ink-2")}>{p.daysSinceContact} d{p.stale && <Clock className="size-3" />}</span> : "—"}
                       </td>
-                      <td className="border-b border-hairline-faint px-3 text-xs text-ink-2"><button type="button" className="block max-w-[16ch] truncate text-left hover:underline" title={p.notes ?? ""} onClick={() => setNotes({ open: true, p })}>{p.notes || <span className="text-faint">{S.board.editNote}…</span>}</button></td>
+                      <td className="border-b border-hairline-faint px-3 text-xs text-ink-2"><button type="button" className="block max-w-[14ch] truncate text-left hover:underline" title={p.notes ?? ""} onClick={() => setNotes({ open: true, p })}>{p.notes || <span className="text-faint">{S.board.editNote}…</span>}</button></td>
                       <td className="border-b border-hairline-faint px-2 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild><Button size="icon-xs" variant="ghost" aria-label="Row actions" data-testid="row-menu"><MoreHorizontal /></Button></DropdownMenuTrigger>
@@ -166,7 +173,7 @@ export function SourcingBoard({ line }: { line: OpsLine }) {
                     </tr>
                     {isOpen && (
                       <tr data-testid="expanded-row">
-                        <td colSpan={13} className="border-b border-hairline-faint bg-section-alt px-6 py-4">
+                        <td colSpan={11} className="border-b border-hairline-faint bg-section-alt px-6 py-4">
                           <div className="mb-2 flex items-center justify-between"><span className="eyebrow">{S.board.versions} · {p.supplier.legalName}</span><Button size="sm" variant="outline" onClick={() => setQuoteFor({ open: true, p })}>{S.board.logQuote}</Button></div>
                           {p.quotes.length === 0 ? <p className="text-xs text-muted-foreground">{S.board.noQuote}</p> : (
                             <ul className="sheet">

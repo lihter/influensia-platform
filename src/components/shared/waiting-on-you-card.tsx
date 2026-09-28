@@ -9,7 +9,8 @@ export type WaitingItem = {
   title: React.ReactNode;
   context?: React.ReactNode;
   due?: React.ReactNode;
-  action: { label: string; href: string };
+  /** omit on ops pages where the header already carries the stage primary (one primary per screen) */
+  action?: { label: string; href: string };
   secondary?: { label: string; href: string };
 };
 
@@ -26,9 +27,10 @@ export function WaitingOnYouCard({ items, tone = "client", eyebrow, emptyTitle, 
   className?: string;
 }) {
   const t = useTranslations("waiting");
-  const wash = tone === "client" ? "border-green-200 bg-green-50" : tone === "agency" ? "border-info-border bg-info-wash" : "border-neutral-border bg-neutral-wash";
-  const divide = tone === "client" ? "divide-green-200" : tone === "agency" ? "divide-info-border" : "divide-neutral-border";
-  const pill = tone === "client" ? "border-green-200 bg-green-100 text-green-700" : tone === "agency" ? "border-info-border bg-card text-info" : "border-neutral-border bg-card text-neutral";
+  // ops mirrors are calm: white card with a 3px tone bar; only the client card gets the green wash
+  const wash = tone === "client" ? "border-green-200 bg-green-50" : tone === "agency" ? "border-border border-l-[3px] border-l-info bg-card" : "border-border border-l-[3px] border-l-neutral-border bg-card";
+  const divide = tone === "client" ? "divide-green-200" : "divide-hairline-faint";
+  const pill = tone === "client" ? "border-green-200 bg-green-100 text-green-700" : tone === "agency" ? "border-info-border bg-info-wash text-info" : "border-neutral-border bg-neutral-wash text-neutral";
   const label = eyebrow ?? (tone === "client" ? t("eyebrow") : tone === "agency" ? t("ops.agency") : t("ops.client"));
 
   if (!items.length) {
@@ -55,17 +57,19 @@ export function WaitingOnYouCard({ items, tone = "client", eyebrow, emptyTitle, 
       <ul className={cn("divide-y", divide)}>
         {items.map((it) => (
           <li key={it.id} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between" data-testid="waiting-item">
-            <div className="min-w-0">
+            <div className="min-w-0 sm:flex-1">
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-lg font-semibold leading-7 text-foreground">{it.title}</h2>
                 {it.due && <span className="shrink-0 font-mono text-xs text-green-700">{it.due}</span>}
               </div>
               {it.context && <p className="mt-0.5 text-sm text-ink-2">{it.context}</p>}
             </div>
-            <div className="flex shrink-0 items-center gap-2 max-sm:[&>*]:flex-1">
-              {it.secondary && <Button asChild variant="ghost" size="lg"><Link href={it.secondary.href}>{it.secondary.label}</Link></Button>}
-              <Button asChild variant={tone === "client" ? "action" : "outline"} size="lg"><Link href={it.action.href}>{it.action.label}</Link></Button>
-            </div>
+            {(it.action || it.secondary) && (
+              <div className="flex shrink-0 items-center gap-2 max-sm:[&>*]:flex-1">
+                {it.secondary && <Button asChild variant="ghost" size="lg"><Link href={it.secondary.href}>{it.secondary.label}</Link></Button>}
+                {it.action && <Button asChild variant={tone === "client" ? "action" : "outline"} size="lg"><Link href={it.action.href}>{it.action.label}</Link></Button>}
+              </div>
+            )}
           </li>
         ))}
       </ul>

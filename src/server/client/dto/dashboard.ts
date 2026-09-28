@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MilestoneDto, ExceptionDto, SourcingProgressDto, WaitingReasonDto, MoneyDto, isoDateTime, isoDate } from "./common";
+import { MilestoneDto, LineStateDto, ExceptionDto, SourcingProgressDto, WaitingReasonDto, MoneyDto, isoDateTime, isoDate } from "./common";
 import { ClientUpdateDto } from "./comment";
 
 /** One "Waiting on you" card (SPEC F-03 table). */
@@ -28,6 +28,9 @@ export const ClientActiveLineDto = z.object({
   milestone: MilestoneDto,
   milestoneStep: z.number().int().min(1).max(9),
   subLabel: z.string(),
+  /** QA-12 truthful chip label; QA-11 offer outcome while we owe a new price */
+  milestoneLabel: z.string(),
+  offerOutcome: z.enum(["changes_requested", "declined", "expired"]).nullable(),
   exception: ExceptionDto,
   exceptionText: z.string().nullable(),
   waitingReason: WaitingReasonDto.nullable(),
@@ -36,6 +39,9 @@ export const ClientActiveLineDto = z.object({
   orderRef: z.string().nullable(),
   isRepeat: z.boolean(),
   updatedAt: isoDateTime,
+  /** internal state (raw enum) + last state change, for "what's next and when" */
+  state: LineStateDto,
+  lastChangeAt: isoDateTime,
 }).strict();
 export type ClientActiveLineDto = z.infer<typeof ClientActiveLineDto>;
 

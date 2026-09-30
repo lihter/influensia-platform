@@ -1,0 +1,56 @@
+# Influensia production stack: app + Postgres 17 + Cloudflare Tunnel.
+# Run from the repo root:  docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+# deploy/.env is created by deploy/host-setup.sh (never committed). Required keys:
+#   APP_URL, BETTER_AUTH_SECRET, DB_PASSWORD, CRON_SECRET, TUNNEL_TOKEN, COMPOSE_PROFILES=tunnel
+name: influensia
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: influensia
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD missing}
+      POSTGRES_DB: influensia
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U influensia -d influensia"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  app:
+    build: { context: .., dockerfile: Dockerfile }
+    image: influensia-app:latest
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://influensia:${DB_PASSWORD}@db:5432/influensia
+      APP_URL: ${APP_URL:?APP_URL missing}
+      BETTER_AUTH_URL: ${APP_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET missing}
+      AUTH_IP_HEADERS: ${AUTH_IP_HEADERS:-cf-connecting-ip}
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET missing}   # locks /api/cron/outbox
+    volumes:
+      - appdata:/data
+    # Localhost only — reachable from the server itself (or an SSM port-forward), never from the internet.
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN missing}
+    depends_on: [app]
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+volumes:
+  pgdata:
+  appdata:

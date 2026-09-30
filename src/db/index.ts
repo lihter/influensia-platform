@@ -21,7 +21,7 @@ const g = globalThis as unknown as DbGlobal;
 async function createDb(): Promise<Db> {
   if (process.env.DATABASE_URL) {
     const { default: postgres } = await import("postgres");
-    const client = postgres(process.env.DATABASE_URL, { max: 10, prepare: false });
+    const client = postgres(process.env.DATABASE_URL, { max: 10, prepare: false, onnotice: () => {} }); // silence "already exists, skipping" notices from the migrator
     return drizzlePg(client, { schema });
   }
   const { PGlite } = await import("@electric-sql/pglite");

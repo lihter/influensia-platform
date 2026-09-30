@@ -19,7 +19,7 @@ export function LineRail({ line }: { line: OpsLine }) {
   const mine = line.previousOrders.filter((o) => o.orgName === line.org.name);
   const others = line.previousOrders.filter((o) => o.orgName !== line.org.name);
   return (
-    <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:min-h-[calc(100dvh-10rem)] xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" data-testid="line-rail">
+    <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:min-h-[calc(100dvh-10rem)] xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image-source:none]" data-testid="line-rail">
       <div className="xl:sticky-under-header">
       <dl className="rounded-xl border border-border bg-card">
         {facts.map((f) => (

@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Influensia platform on one EC2 instance (t4g.small, Ubuntu 24.04 arm64) - app + Postgres 17 in Docker, public access
+  only through Cloudflare Tunnel (no inbound ports), shell via SSM Session Manager, nightly backups to S3.
+  Deploy in eu-central-1 (Frankfurt). See docs/DEPLOY_AWS.md.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: "Code (private GitHub repo)" }
+        Parameters: [GitHubRepo, GitHubBranch, GitHubToken]
+      - Label: { default: "Domain (Cloudflare Tunnel)" }
+        Parameters: [AppUrl, TunnelToken]
+      - Label: { default: "Cost alert" }
+        Parameters: [AlertEmail, MonthlyBudgetUsd]
+      - Label: { default: "Server" }
+        Parameters: [InstanceType, DiskSizeGb, UbuntuAmi]
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Description: "owner/name of the private repo, e.g. markolihter/influensia-platform"
+    AllowedPattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+  GitHubBranch:
+    Type: String
+    Default: main
+  GitHubToken:
+    Type: String
+    NoEcho: true
+    Description: "Fine-grained GitHub token: this repo only, Contents = Read-only"
+    MinLength: 20
+  AppUrl:
+    Type: String
+    Default: https://app.influensia.ro
+    AllowedPattern: "^https://[a-z0-9.-]+$"
+  TunnelToken:
+    Type: String
+    NoEcho: true
+    Description: "Cloudflare Zero Trust > Networks > Tunnels > your tunnel > install command token (the long eyJ... string)"
+    MinLength: 50
+  AlertEmail:
+    Type: String
+    Description: "Gets an email when AWS spend runs ahead of plan"
+    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 25
+    Description: "Expected ~20 USD/month (paid from free-plan credits). Alert at 80% actual / 100% forecast."
+  InstanceType:
+    Type: String
+    Default: t4g.small
+    AllowedValues: [t4g.small]
+    Description: "Free-plan eligible, arm64, 2 vCPU / 2 GB"
+  DiskSizeGb:
+    Type: Number
+    Default: 30
+    MinValue: 20
+    MaxValue: 100
+  UbuntuAmi:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id
+
+Resources:
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-daily-backups
+            Status: Enabled
+            Prefix: daily/
+            ExpirationInDays: 30
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: influensia-instance
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub "${BackupBucket.Arn}/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt BackupBucket.Arn
+              - Effect: Allow
+                Action: ssm:PutParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/influensia/*"
+              - Effect: Allow
+                Action: cloudformation:SignalResource
+                Resource: !Ref AWS::StackId
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  NoInboundSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Influensia - no inbound traffic (Cloudflare Tunnel and SSM are outbound-only)
+      # no ingress rules; default egress (all outbound) is kept
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        MetadataOptions:
+          HttpTokens: required
+          HttpEndpoint: enabled
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: !Ref DiskSizeGb
+              VolumeType: gp3
+              Encrypted: true
+              DeleteOnTermination: true
+
+  Server:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT45M
+    Properties:
+      ImageId: !Ref UbuntuAmi
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds: [!GetAtt NoInboundSecurityGroup.GroupId]
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      Tags:
+        - { Key: Name, Value: influensia-app }
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          exec > >(tee -a /var/log/influensia-setup.log) 2>&1
+          set -euo pipefail
+          signal() {
+            /snap/bin/aws cloudformation signal-resource --region ${AWS::Region} --stack-name ${AWS::StackName} \
+              --logical-resource-id Server --unique-id "$(hostname)" --status "$1" || true
+          }
+          trap 'signal FAILURE' ERR
+          apt-get update -y && apt-get install -y git
+          snap install aws-cli --classic || true
+          install -d -m 700 /opt/influensia
+          if [ ! -d /opt/influensia/app/.git ]; then
+            git clone --branch "${GitHubBranch}" "https://x-access-token:${GitHubToken}@github.com/${GitHubRepo}.git" /opt/influensia/app
+          fi
+          cd /opt/influensia/app
+          APP_URL="${AppUrl}" TUNNEL_TOKEN="${TunnelToken}" BACKUP_BUCKET="${BackupBucket}" \
+            INVITES_PARAM=/influensia/invite-links AWS_REGION="${AWS::Region}" ./deploy/host-setup.sh
+          signal SUCCESS
+
+  CostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub "${AWS::StackName}-monthly"
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: !Ref MonthlyBudgetUsd, Unit: USD }
+        CostTypes: { IncludeCredit: false }
+      NotificationsWithSubscribers:
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
+        - Notification: { NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
+
+Outputs:
+  AppUrl:
+    Value: !Ref AppUrl
+  InviteLinks:
+    Description: Open, then "Show decrypted value" - one link per person, valid 7 days
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/systems-manager/parameters/influensia/invite-links/description?region=${AWS::Region}"
+  ServerShell:
+    Description: Browser terminal on the server (Session Manager) - run updates here
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/systems-manager/session-manager/${Server}?region=${AWS::Region}"
+  InstanceId:
+    Value: !Ref Server
+  BackupBucket:
+    Value: !Ref BackupBucket

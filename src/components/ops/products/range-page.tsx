@@ -163,7 +163,7 @@ export function RangePage({ r, isAdmin, products, actions }: { r: RangeDetail; i
           </section>
         </div>
 
-        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" data-testid="range-rail"><div className="xl:sticky-under-header">
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:min-h-[calc(100dvh-10rem)] xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image-source:none]" data-testid="range-rail"><div className="xl:sticky-under-header">
           <p className="eyebrow mb-3">Facts</p>
           <dl className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Supplier</dt><dd className="text-right"><Link href={`/ops/suppliers/${r.supplierRef}`} className="link">{r.supplierName}</Link></dd></div>

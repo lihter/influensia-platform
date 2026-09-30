@@ -216,7 +216,7 @@ export function SupplierPage({ s, isAdmin, actions }: { s: SupplierDetail; isAdm
           </TabsContent>
         </Tabs>
 
-        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" data-testid="supplier-rail"><div className="xl:sticky-under-header">
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:min-h-[calc(100dvh-10rem)] xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image-source:none]" data-testid="supplier-rail"><div className="xl:sticky-under-header">
           <p className="eyebrow mb-3">Shown to clients as</p>
           {s.ranges.length === 0 ? (
             <p className="text-sm text-muted-foreground">No factory range published yet. Clients only ever see a “Factory F-nnnn” label.</p>

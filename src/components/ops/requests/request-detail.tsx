@@ -174,7 +174,7 @@ export function OpsRequestDetailView({ dto, me, claim, assign }: { dto: OpsReque
           </Tabs>
         </div>
 
-        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-t xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" aria-label={D.client}>
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:min-h-[calc(100dvh-10rem)] xl:border-t xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image-source:none]" aria-label={D.client}>
           <div className="xl:sticky-under-header">
           <Eyebrow className="mb-2">{D.client}</Eyebrow>
           <p className="text-base font-semibold text-foreground">{dto.orgName}</p>

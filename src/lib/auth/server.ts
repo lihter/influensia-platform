@@ -36,6 +36,9 @@ export function createAuth(db: Db) {
     // Better Auth's built-in limiter is on in production by default (sign-in: 3 / 10 s per IP). The e2e suite signs in
     // dozens of times from one IP, so playwright.config.ts sets AUTH_RATE_LIMIT=off; never set it in a real deployment.
     ...(process.env.AUTH_RATE_LIMIT === "off" ? { rateLimit: { enabled: false } } : {}),
+    // Behind a proxy the client IP arrives in a header. AUTH_IP_HEADERS="cf-connecting-ip" behind Cloudflare Tunnel
+    // (the app has no public port, so only Cloudflare can set it). Unset = Better Auth default (x-forwarded-for).
+    ...(process.env.AUTH_IP_HEADERS ? { advanced: { ipAddress: { ipAddressHeaders: process.env.AUTH_IP_HEADERS.split(",").map((h) => h.trim().toLowerCase()) } } } : {}),
     session: {
       expiresIn: 60 * 60 * 24 * 30, // 30 days (D-02)
       updateAge: 60 * 60 * 24,

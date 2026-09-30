@@ -227,7 +227,7 @@ export function ProductPage({ p, isAdmin, owners, actions }: { p: ProductDetail;
           </TabsContent>
         </Tabs>
 
-        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none]" data-testid="catalog-preview"><div className="xl:sticky-under-header">
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:min-h-[calc(100dvh-10rem)] xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image-source:none]" data-testid="catalog-preview"><div className="xl:sticky-under-header">
           <p className="eyebrow mb-3">Catalog preview · as the client sees it</p>
           <CatalogCard p={previewDto(p, form)} action={<Button variant="outline" className="w-full" disabled>Request offer</Button>} />
           <p className="mt-3 text-xs text-muted-foreground">{p.visibility === "catalog" ? "Live in the catalog for every client." : "Not in the catalog. Publish to make it visible to every client."}</p>

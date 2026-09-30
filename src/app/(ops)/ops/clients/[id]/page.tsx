@@ -87,7 +87,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             </div>
           </section>
         </div>
-        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image:none] max-xl:hidden" aria-label="Client facts"><div className="xl:sticky-under-header">
+        <aside className="band-alt -mb-12 py-6 xl:-mr-6 xl:min-h-[calc(100dvh-10rem)] xl:border-l xl:border-hairline-strong xl:px-5 xl:[border-image-source:none] max-xl:hidden" aria-label="Client facts"><div className="xl:sticky-under-header">
           <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">At a glance</div>
           <div className="mt-2 divide-y divide-hairline-faint">
             <Fact label="Users">{org.users}</Fact>

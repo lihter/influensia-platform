@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   Influensia platform on one EC2 instance (t4g.small, Ubuntu 24.04 arm64) - app + Postgres 17 in Docker, public access
   only through Cloudflare Tunnel (no inbound ports), shell via SSM Session Manager, nightly backups to S3.
-  Deploy in eu-central-1 (Frankfurt). See docs/DEPLOY_AWS.md.
+  Deploy in the project Region (eu-north-1). Cost alerts: AWS Budgets is created separately (global API). See docs/DEPLOY_AWS.md.
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -11,8 +11,6 @@ Metadata:
         Parameters: [GitHubRepo, GitHubBranch, GitHubToken]
       - Label: { default: "Domain (Cloudflare Tunnel)" }
         Parameters: [AppUrl, TunnelToken]
-      - Label: { default: "Cost alert" }
-        Parameters: [AlertEmail, MonthlyBudgetUsd]
       - Label: { default: "Server" }
         Parameters: [InstanceType, DiskSizeGb, UbuntuAmi]
 
@@ -38,14 +36,6 @@ Parameters:
     NoEcho: true
     Description: "Cloudflare Zero Trust > Networks > Tunnels > your tunnel > install command token (the long eyJ... string)"
     MinLength: 50
-  AlertEmail:
-    Type: String
-    Description: "Gets an email when AWS spend runs ahead of plan"
-    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
-  MonthlyBudgetUsd:
-    Type: Number
-    Default: 25
-    Description: "Expected ~20 USD/month (paid from free-plan credits). Alert at 80% actual / 100% forecast."
   InstanceType:
     Type: String
     Default: t4g.small
@@ -174,21 +164,6 @@ Resources:
           APP_URL="${AppUrl}" TUNNEL_TOKEN="${TunnelToken}" BACKUP_BUCKET="${BackupBucket}" \
             INVITES_PARAM=/influensia/invite-links AWS_REGION="${AWS::Region}" ./deploy/host-setup.sh
           signal SUCCESS
-
-  CostBudget:
-    Type: AWS::Budgets::Budget
-    Properties:
-      Budget:
-        BudgetName: !Sub "${AWS::StackName}-monthly"
-        BudgetType: COST
-        TimeUnit: MONTHLY
-        BudgetLimit: { Amount: !Ref MonthlyBudgetUsd, Unit: USD }
-        CostTypes: { IncludeCredit: false }
-      NotificationsWithSubscribers:
-        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE }
-          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
-        - Notification: { NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
-          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref AlertEmail }]
 
 Outputs:
   AppUrl:

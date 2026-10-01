@@ -5,7 +5,7 @@ The server accepts **no inbound connections**; the public reaches it only throug
 shell only through AWS Session Manager in the browser. Backups go to S3 every night.
 
 ```
-browser ──https──▶ Cloudflare (app.influensia.ro) ──tunnel──▶ EC2 t4g.small (eu-central-1)
+browser ──https──▶ Cloudflare (app.influensia.ro) ──tunnel──▶ EC2 t4g.small (eu-north-1) 
                                                               ├─ tunnel  (cloudflared, outbound only)
                                                               ├─ app     (Next.js, :3000 on localhost only)
                                                               └─ db      (Postgres 17, internal network only)
@@ -43,11 +43,11 @@ browser ──https──▶ Cloudflare (app.influensia.ro) ──tunnel──�
    (Cloudflare creates the DNS record itself. The website and Zoho email are untouched.)
 
 ### 3. AWS — creates the server
-1. Create the AWS account (Free plan). Top-right region selector → **Europe (Frankfurt) eu-central-1**.
+1. Create the AWS account (Free plan). Top-right region selector → **Europe (Stockholm) eu-north-1**.
 2. CloudFormation → **Create stack** → *With new resources* → **Upload a template file** →
    `deploy/aws/influensia-stack.yaml` → Next.
 3. Stack name `influensia`; fill in: GitHubRepo (`<you>/influensia-platform`), GitHubToken, TunnelToken,
-   AlertEmail. Leave the rest as is → Next.
+   Leave the rest as is → Next. (Cost alerts: create an AWS Budget in Billing — it is a global service, not part of the stack.)
 4. *Stack failure options* → **Preserve successfully provisioned resources** (so a failed first boot can be
    inspected instead of deleted) → tick **I acknowledge that AWS CloudFormation might create IAM resources** → Submit.
 5. Wait for **CREATE_COMPLETE** (15–25 min: the server builds the app itself).

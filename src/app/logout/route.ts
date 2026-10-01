@@ -7,10 +7,14 @@ export const runtime = "nodejs";
 async function handler(req: Request) {
   const auth = await getAuth();
   const res = await auth.api.signOut({ headers: req.headers, asResponse: true }).catch(() => null);
-  const redirect = NextResponse.redirect(new URL("/login", req.url), 303);
+  // Relative Location: behind a proxy/tunnel `req.url` carries the bind address (0.0.0.0:3000), not the public origin.
+  const redirect = new NextResponse(null, { status: 303, headers: { Location: "/login" } });
   for (const c of res?.headers.getSetCookie() ?? []) redirect.headers.append("set-cookie", c);
   // belt and braces: expire the session cookie even if sign-out failed (already signed out)
-  if (!res) redirect.cookies.set("better-auth.session_token", "", { maxAge: 0, path: "/" });
+  if (!res) {
+    redirect.cookies.set("better-auth.session_token", "", { maxAge: 0, path: "/" });
+    redirect.cookies.set("__Secure-better-auth.session_token", "", { maxAge: 0, path: "/", secure: true });
+  }
   return redirect;
 }
 export { handler as GET, handler as POST };

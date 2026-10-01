@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 DC="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 BEFORE="$(git rev-parse --short HEAD)"
-git pull --ff-only
+git fetch --quiet origin main && git reset --hard --quiet origin/main   # the server never holds local edits
 AFTER="$(git rev-parse --short HEAD)"
 echo "code: $BEFORE → $AFTER"
 ./deploy/backup.sh            # safety copy before every deploy

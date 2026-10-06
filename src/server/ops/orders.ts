@@ -32,6 +32,7 @@ import { eventText } from "@/server/shared/labels";
 import { collapseOpsFeed } from "@/server/shared/timeline";
 import { label } from "@/lib/labels";
 import { listDocumentsFor, uploadDocument, publishDocument, throwIfBlocked, type OpsDocumentRow, type PublishResult } from "./documents";
+import { lineThumbs, mediaItems, OPS_MEDIA, type MediaItem } from "@/server/shared/media";
 
 /** Domain preconditions (SPEC §3.4 "Pre" column) surfaced to the UI as `{ ok: false, error: code }`. */
 export class OrderError extends Error {
@@ -107,6 +108,8 @@ export type DocRef = { id: string; filename: string; kind: DocumentKind; visibil
 
 export type OpsOrderRow = {
   id: string; ref: string; href: string; name: string; orgName: string; orgId: string; linesCount: number;
+  /** pictures of the order's first lines */
+  media: MediaItem[];
   state: LineState; milestone: Milestone; exception: LineException | null;
   dueMinor: number; paidMinor: number; currency: string;
   eta: string | null; etaKind: "exworks" | "port" | "delivered" | null;
@@ -157,14 +160,16 @@ export async function listOrders(ctx: Ctx): Promise<OpsOrderRow[]> {
   const db = await getDb();
   const lcs = await loadLineContexts(db, { includeCancelled: true });
   const rows = new Map<string, OpsOrderRow>();
+  const linesOf = new Map<string, { id: string; name: string }[]>();
   for (const lc of lcs) {
     if (!lc.order) continue;
     const o = lc.order;
+    linesOf.set(o.id, [...(linesOf.get(o.id) ?? []), { id: lc.id, name: lc.name }]);
     const existing = rows.get(o.id);
     if (existing) { existing.linesCount++; continue; }
     const pays = o.payments;
     rows.set(o.id, {
-      id: o.id, ref: o.ref, href: `/ops/orders/${o.ref}`, name: lc.name, orgName: lc.orgName, orgId: lc.orgId, linesCount: 1,
+      id: o.id, ref: o.ref, href: `/ops/orders/${o.ref}`, name: lc.name, orgName: lc.orgName, orgId: lc.orgId, linesCount: 1, media: [],
       state: o.state, milestone: o.milestone, exception: o.exception,
       dueMinor: pays.filter((p) => p.status === "pending").reduce((s, p) => s + p.amountMinor, 0),
       paidMinor: pays.filter((p) => p.status === "paid").reduce((s, p) => s + p.amountMinor, 0),
@@ -173,6 +178,8 @@ export async function listOrders(ctx: Ctx): Promise<OpsOrderRow[]> {
       agentName: lc.agentName, agentId: lc.assignedAgentId, stale: lc.stale, lastChangeAt: o.lastStateChangeAt.toISOString(), waitingParty: lc.waiting.party,
     });
   }
+  const thumbs = await lineThumbs(db, [...linesOf.values()].flat().map((l) => l.id), OPS_MEDIA);
+  for (const r of rows.values()) r.media = mediaItems(linesOf.get(r.id) ?? [], thumbs);
   return [...rows.values()].sort((a, b) => b.lastChangeAt.localeCompare(a.lastChangeAt));
 }
 

@@ -15,7 +15,7 @@ import { unitLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { perUnit, nextStepFor } from "../client-format";
 import { NextShort } from "../now-next";
-import { ProductThumb, ThumbStack } from "../product-thumb";
+import { MediaCell, ProductThumb, ThumbStack } from "@/components/shared/media";
 
 /* ───────────────────────── shared bits ───────────────────────── */
 
@@ -58,13 +58,11 @@ export function ProductsTable({ rows, compact, limit }: { rows: ClientProductRow
     {
       id: "product", header: "Product", accessorFn: (r) => r.name, enableSorting: true,
       cell: ({ row: { original: r } }) => (
-        <div className="flex items-center gap-4 py-1.5">
-          <ProductThumb image={r.image} name={r.name} domain={r.linkDomain} size={compact ? "md" : "lg"} />
-          <div className="min-w-0 max-w-[30ch]">
-            <Link href={r.href} className="block truncate text-[15px] font-medium leading-5 text-foreground hover:underline" title={r.name} onClick={(e) => e.stopPropagation()}>{r.name}</Link>
-            <CellSub mono>{r.ref}{r.qty !== null ? ` · ${r.qty.toLocaleString("en-US")} ${unitLabel(r.unit, r.qty)}` : ""}</CellSub>
-          </div>
-        </div>
+        <MediaCell
+          image={r.image} name={r.name} domain={r.linkDomain} size={compact ? "md" : "lg"} variant="comfortable" textWidth="max-w-[30ch]"
+          title={<Link href={r.href} className="hover:underline" title={r.name} onClick={(e) => e.stopPropagation()}>{r.name}</Link>}
+          sub={<>{r.ref}{r.qty !== null ? ` · ${r.qty.toLocaleString("en-US")} ${unitLabel(r.unit, r.qty)}` : ""}</>}
+        />
       ),
       meta: { sticky: true },
     },
@@ -161,16 +159,16 @@ export function OrdersTable({ rows, compact, limit }: { rows: ClientOrderRowDto[
     {
       id: "order", header: "Order", accessorFn: (r) => r.placedAt, enableSorting: true,
       cell: ({ row: { original: r } }) => (
-        <div className="flex items-center gap-4 py-1.5">
-          <ThumbStack items={r.items} size={compact ? "md" : "lg"} />
-          <div className="min-w-0 max-w-[26ch]">
-            <Link href={r.href} className="block truncate text-[15px] font-medium leading-5 text-foreground hover:underline" onClick={(e) => e.stopPropagation()} title={r.items.map((i) => i.name).join(", ")}>
+        <MediaCell
+          items={r.items} size={compact ? "md" : "lg"} variant="comfortable" textWidth="max-w-[26ch]"
+          title={
+            <Link href={r.href} className="hover:underline" onClick={(e) => e.stopPropagation()} title={r.items.map((i) => i.name).join(", ")}>
               {r.items[0]?.name ?? r.ref}{r.items.length > 1 ? <span className="font-normal text-muted-foreground"> + {r.items.length - 1} more</span> : null}
             </Link>
-            <CellSub mono>{r.ref} · {fmtDate(r.placedAt)}</CellSub>
-            <div className="mt-1">{r.exception ? <ExceptionChip exception={r.exception} client /> : <MilestoneChip milestone={r.milestone} waitingOnClient={!!r.waitingReason} label={r.milestoneLabel} />}</div>
-          </div>
-        </div>
+          }
+          sub={<>{r.ref} · {fmtDate(r.placedAt)}</>}
+          extra={<div className="mt-1">{r.exception ? <ExceptionChip exception={r.exception} client /> : <MilestoneChip milestone={r.milestone} waitingOnClient={!!r.waitingReason} label={r.milestoneLabel} />}</div>}
+        />
       ),
       meta: { sticky: true },
     },

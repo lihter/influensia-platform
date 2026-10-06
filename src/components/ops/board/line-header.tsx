@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import type { OpsLine } from "@/server/ops/participations";
 import type { LineState } from "@/db/enums";
 import { PageHeader, EyebrowLink } from "@/components/shared/page-header";
+import { ProductThumb } from "@/components/shared/media";
 import { initials } from "@/lib/labels";
 import { StateChip, MilestoneChip, ExceptionChip, UtilityBadge } from "@/components/shared/chips";
 import { Age } from "@/components/shared/formatters";
@@ -40,6 +41,7 @@ export function LineHeader({ line, tab, me }: { line: OpsLine; tab: Tab; me: { i
       sticky
       crumbs={[{ href: "/ops/requests", label: "Requests" }, { href: `/ops/requests/${line.request.ref}`, label: <span className="font-mono">{line.request.ref}</span> }, { label: <span className="font-mono" data-testid="line-ref">{line.ref}</span> }]}
       eyebrow={<><EyebrowLink href={`/ops/clients/${line.org.id}`}>{line.org.name}</EyebrowLink>{line.request.clientRef && <span className="normal-case tracking-normal"> · Client ref <span className="font-mono">{line.request.clientRef}</span></span>}</>}
+      media={<ProductThumb image={line.image} name={line.name} domain={line.links[0]?.domain} size="lg" />}
       title={<span><span className="font-mono font-normal text-muted-foreground">{String(line.lineNo).padStart(2, "0")} ·</span> {line.name}</span>}
       meta={
         <>

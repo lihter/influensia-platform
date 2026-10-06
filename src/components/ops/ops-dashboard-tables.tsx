@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { OpsDashboard, OpsRow } from "@/server/ops/dashboard";
 import type { ActionResult } from "@/server/shared/http";
-import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
+import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { MediaCell } from "@/components/shared/media";
 import { StateChip, ExceptionChip } from "@/components/shared/chips";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Age, DateTime, Qty } from "@/components/shared/formatters";
@@ -28,7 +29,7 @@ export function OpsDashboardTables({ dash, claim }: { dash: OpsDashboard; claim:
   const [claiming, setClaiming] = React.useState<string | null>(null);
 
   const base: DataTableColumn<OpsRow>[] = [
-    { id: "name", accessorKey: "name", header: t("col.name"), meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={<>{row.original.ref}{row.original.kind === "order" ? " · order" : ""}</>} /> },
+    { id: "name", accessorKey: "name", header: t("col.name"), meta: { sticky: true }, cell: ({ row }) => <MediaCell image={row.original.image} domain={row.original.linkDomain} title={row.original.name} sub={<>{row.original.ref}{row.original.kind === "order" ? " · order" : ""}</>} /> },
     { id: "client", accessorKey: "orgName", header: t("col.client"), cell: ({ row }) => <span className="block max-w-[16ch] truncate" title={row.original.orgName}>{row.original.orgName}</span> },
     { id: "state", accessorKey: "state", header: t("col.state"), cell: ({ row }) => <span className="inline-flex items-center gap-1.5"><StateChip state={row.original.state} stale={row.original.stale} />{row.original.exception && <ExceptionChip exception={row.original.exception} />}</span> },
   ];

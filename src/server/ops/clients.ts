@@ -18,6 +18,8 @@ import { now } from "@/server/shared/clock";
 import { isStale } from "@/server/shared/derived";
 import { inviteUser } from "./admin";
 import { label } from "@/lib/labels";
+import { lineThumbs, mediaItems, OPS_MEDIA, type MediaItem, type Thumb } from "@/server/shared/media";
+import { linkDomain } from "@/lib/media";
 
 /* ────────── pure helpers (unit-tested in tests/unit/clients.test.ts) ────────── */
 
@@ -122,6 +124,8 @@ export type ClientLineRow = {
   ref: string;
   requestRef: string;
   name: string;
+  image: Thumb | null;
+  linkDomain: string | null;
   qty: number | null;
   unit: string;
   state: LineState;
@@ -135,6 +139,9 @@ export type ClientLineRow = {
 export type ClientOrderRow = {
   id: string;
   ref: string;
+  /** pictures of the order's first lines */
+  media: MediaItem[];
+  linesCount: number;
   state: LineState;
   exception: LineException | null;
   stale: boolean;
@@ -219,13 +226,16 @@ export async function getClient(ctx: Ctx, orgId: string): Promise<ClientDetail> 
     .from(users).leftJoin(member, eq(member.userId, users.id)).where(eq(users.orgId, o.id)).orderBy(users.createdAt);
 
   const lcs = await loadLineContexts(db, { orgId: o.id, includeCancelled: true });
+  const thumbs = await lineThumbs(db, lcs.map((l) => l.id), OPS_MEDIA);
+  const linesOf = new Map<string, { id: string; name: string }[]>();
+  for (const lc of lcs) if (lc.order) linesOf.set(lc.order.id, [...(linesOf.get(lc.order.id) ?? []), { id: lc.id, name: lc.name }]);
   const lines: ClientLineRow[] = lcs.map((lc) => ({
-    id: lc.id, ref: lc.ref, requestRef: lc.requestRef, name: lc.name, qty: lc.qty, unit: lc.unit, state: lc.state, exception: lc.exception, stale: lc.stale,
+    id: lc.id, ref: lc.ref, requestRef: lc.requestRef, name: lc.name, image: thumbs.get(lc.id) ?? null, linkDomain: linkDomain(lc.links), qty: lc.qty, unit: lc.unit, state: lc.state, exception: lc.exception, stale: lc.stale,
     agentName: lc.agentName, lastChangeAt: lc.lastStateChangeAt.toISOString(), href: `/ops/lines/${lc.ref}`,
   }));
   const orows = await db.select().from(orders).where(and(eq(orders.orgId, o.id), isNull(orders.deletedAt))).orderBy(desc(orders.createdAt));
   const ordersOut: ClientOrderRow[] = orows.map((r) => ({
-    id: r.id, ref: r.ref, state: r.state, exception: r.exception, stale: isStale({ state: r.state, exception: r.exception, lastStateChangeAt: r.lastStateChangeAt }),
+    id: r.id, ref: r.ref, media: mediaItems(linesOf.get(r.id) ?? [], thumbs), linesCount: linesOf.get(r.id)?.length ?? 0, state: r.state, exception: r.exception, stale: isStale({ state: r.state, exception: r.exception, lastStateChangeAt: r.lastStateChangeAt }),
     totalMinor: r.totalMinor, currency: r.currency, confirmedAt: r.confirmedAt?.toISOString() ?? null, lastChangeAt: r.lastStateChangeAt.toISOString(), href: `/ops/orders/${r.ref}`,
   }));
   const events = await listActivity(db, { entityType: "organization", entityId: o.id, limit: 100 });

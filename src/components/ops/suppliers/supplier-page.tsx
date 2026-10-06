@@ -9,7 +9,8 @@ import type { ActionResult } from "@/server/shared/http";
 import type { ContactFormInput, SupplierFormInput } from "@/app/(ops)/ops/suppliers/actions";
 import type { LineState } from "@/db/enums";
 import { PageHeader } from "@/components/shared/page-header";
-import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
+import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { MediaCell } from "@/components/shared/media";
 import { ParticipationChip, StateChip, VisibilityBadge } from "@/components/shared/chips";
 import { FactoryLabel } from "@/components/shared/factory-label";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -53,7 +54,7 @@ export function SupplierPage({ s, isAdmin, actions }: { s: SupplierDetail; isAdm
 
   const lineHref = (p: SupplierParticipation) => `/ops/lines/${p.lineRef}?tab=sourcing`;
   const partColumns: DataTableColumn<SupplierParticipation>[] = [
-    { id: "line", accessorKey: "lineRef", header: "Request line", meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.lineName} sub={row.original.lineRef} /> },
+    { id: "line", accessorKey: "lineRef", header: "Request line", meta: { sticky: true }, cell: ({ row }) => <MediaCell image={row.original.image} title={row.original.lineName} sub={row.original.lineRef} /> },
     { id: "client", accessorKey: "orgName", header: "Client" },
     { id: "lineState", accessorKey: "lineState", header: "Line", cell: ({ row }) => <StateChip state={row.original.lineState as LineState} /> },
     { id: "status", accessorKey: "status", header: "Status", cell: ({ row }) => <span className="inline-flex items-center gap-1.5"><ParticipationChip status={row.original.status} />{row.original.reason && <span className="max-w-[24ch] truncate text-xs text-muted-foreground" title={row.original.reason}>{row.original.reason}</span>}</span> },

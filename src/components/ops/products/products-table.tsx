@@ -3,7 +3,8 @@ import * as React from "react";
 import { Search, AlertTriangle } from "lucide-react";
 import type { ProductRow } from "@/server/ops/products";
 import { PRODUCT_CATEGORIES, PRODUCT_VISIBILITIES, type ProductVisibility } from "@/db/enums";
-import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
+import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { MediaCell } from "@/components/shared/media";
 import { EmptyState } from "@/components/shared/empty-state";
 import { UtilityBadge } from "@/components/shared/chips";
 import { DateTime, Qty, UnitPrice } from "@/components/shared/formatters";
@@ -40,7 +41,7 @@ export function ProductsTable({ rows, owners }: { rows: ProductRow[]; owners: { 
   const clear = () => { setQ(""); setVisibility(""); setCategory(""); setOwner(""); setExpiring(false); };
 
   const columns: DataTableColumn<ProductRow>[] = [
-    { id: "name", accessorKey: "name", header: "Product", meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={<>{row.original.ref}{row.original.category && <span className="font-sans"> · {label("productCategory", row.original.category)}</span>}</>} className="max-w-[40ch]" /> },
+    { id: "name", accessorKey: "name", header: "Product", meta: { sticky: true }, cell: ({ row }) => <MediaCell image={row.original.image} size="lg" title={row.original.name} textWidth="max-w-[40ch]" sub={<>{row.original.ref}{row.original.category && <span className="font-sans"> · {label("productCategory", row.original.category)}</span>}</>} /> },
     { id: "owner", accessorKey: "ownerOrgName", header: "Owner org", cell: ({ row }) => row.original.ownerOrgName ?? <span className="text-faint">—</span> },
     { id: "visibility", accessorKey: "visibility", header: "Visibility", cell: ({ row }) => <VisibilityChip visibility={row.original.visibility} /> },
     {

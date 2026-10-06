@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
-import { ProductThumb } from "../product-thumb";
+import { MediaCell } from "@/components/shared/media";
 import { S } from "./strings";
 
 const T = S.list;
@@ -40,18 +40,18 @@ export function RequestsList({ dto, tab }: { dto: ClientRequestListDto; tab: Cli
     {
       id: "product", header: "Product", accessorFn: (r) => r.name,
       cell: ({ row: { original: r } }) => (
-        <div className="flex items-center gap-4 py-1.5">
-          <ProductThumb image={r.image} name={r.name} domain={r.linkDomain} size="lg" />
-          <div className="min-w-0 max-w-[40ch]">
+        <MediaCell
+          image={r.image} name={r.name} domain={r.linkDomain} size="lg" variant="comfortable" textWidth="max-w-[40ch]"
+          overline={
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <Ref muted>{r.displayRef}</Ref>
               {!r.orderRef && !r.isDraft && <Link href={`/app/requests/${r.requestRef}`} onClick={(e) => e.stopPropagation()} className="relative z-10 font-mono text-xs text-muted-foreground underline-offset-[3px] hover:text-foreground hover:underline" data-testid="request-link">{r.requestRef} ›</Link>}
               {r.isRepeat && <UtilityBadge kind="repeat">Repeat</UtilityBadge>}
             </div>
-            <Link href={r.href} onClick={(e) => e.stopPropagation()} className="block truncate text-[15px] font-medium leading-5 text-foreground hover:underline" title={r.name}>{r.name}</Link>
-            <div className="truncate text-xs text-ink-2" title={r.exceptionText ?? r.subLabel} data-testid="status-detail">{r.exceptionText ?? r.subLabel}</div>
-          </div>
-        </div>
+          }
+          title={<Link href={r.href} onClick={(e) => e.stopPropagation()} className="hover:underline" title={r.name}>{r.name}</Link>}
+          extra={<div className="truncate text-xs text-ink-2" title={r.exceptionText ?? r.subLabel} data-testid="status-detail">{r.exceptionText ?? r.subLabel}</div>}
+        />
       ),
       meta: { sticky: true },
     },

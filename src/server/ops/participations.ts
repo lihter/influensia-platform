@@ -28,6 +28,7 @@ import { daysBetween } from "@/server/shared/dates";
 import { storeDocument } from "@/server/shared/files";
 import { normaliseLoadingPort, LOADING_PORTS } from "@/server/shared/leak-check";
 import { collapseOpsFeed } from "@/server/shared/timeline";
+import { lineThumbs, OPS_MEDIA, type Thumb } from "@/server/shared/media";
 
 /* ───────────────────────── types ───────────────────────── */
 
@@ -83,7 +84,7 @@ export type OpsFeedItem = {
 export type OpsPreviousOrder = { orderRef: string; orgName: string; qty: number; unit: string; unitPriceMinorE2: number; feeMinor: number; currency: string; supplierName: string | null; deliveredAt: string | null; confirmedAt: string | null; state: LineState };
 
 export type OpsLine = {
-  id: string; ref: string; lineNo: number; name: string; qty: number | null; unit: string; clientSku: string | null; links: { url: string; domain: string | null; notDurable: boolean }[];
+  id: string; ref: string; lineNo: number; name: string; image: Thumb | null; qty: number | null; unit: string; clientSku: string | null; links: { url: string; domain: string | null; notDurable: boolean }[];
   customisation: string | null; materials: string | null; volume12m: number | null; reorderInterval: string | null;
   state: LineState; milestone: Milestone; exception: LineException | null; exceptionReason: string | null; stale: boolean; lastStateChangeAt: string; createdAt: string;
   waiting: LineContext["waiting"]; allowedTransitions: readonly State[];
@@ -258,7 +259,7 @@ export async function getOpsLine(ctx: Ctx, ref: string): Promise<OpsLine> {
   const [req] = await db.select().from(requests).where(eq(requests.id, line.requestId)).limit(1);
   const [org] = await db.select().from(organizations).where(eq(organizations.id, line.orgId)).limit(1);
   const [lc] = await loadLineContexts(db, { lineIds: [line.id], includeCancelled: true, includeDrafts: true }, at);
-  const fx = await loadFx(db);
+  const [fx, thumbs] = await Promise.all([loadFx(db), lineThumbs(db, [line.id], OPS_MEDIA)]);
   const product = line.productId ? (await db.select().from(products).where(eq(products.id, line.productId)).limit(1))[0] ?? null : null;
   const [specRows, imageRows, rule, { rows: parts, strip }, rfqRows, offerRows, sampleRows, eventRows, commentRows] = await Promise.all([
     product ? db.select().from(productSpecs).where(eq(productSpecs.productId, product.id)).orderBy(desc(productSpecs.version)) : [],
@@ -320,6 +321,7 @@ export async function getOpsLine(ctx: Ctx, ref: string): Promise<OpsLine> {
   const specs: OpsSpecVersion[] = specRows.map((s) => ({ id: s.id, version: s.version, fields: s.fields, frozenAt: iso(s.frozenAt), frozenByName: s.frozenBy ? names[s.frozenBy] ?? null : null }));
   return {
     id: line.id, ref: line.lineRef, lineNo: line.lineNo, name: line.name, qty: line.qtyFirst, unit: line.unit, clientSku: line.clientSku,
+    image: thumbs.get(line.id) ?? null,
     links: line.clientLinks.map((url) => { const m = line.linksMeta.find((x) => x.url === url); return { url, domain: m?.domain ?? safeHost(url), notDurable: !!m?.not_durable }; }),
     customisation: line.customisation, materials: line.materials, volume12m: line.volume12m, reorderInterval: line.reorderInterval,
     state: lc?.state ?? line.state, milestone: lc?.milestone ?? line.milestone, exception: lc?.exception ?? line.exception, exceptionReason: lc?.exceptionReason ?? line.exceptionReason, stale: lc?.stale ?? false,

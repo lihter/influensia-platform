@@ -15,6 +15,8 @@ import { opsUsers, clientUsersOf, userNames } from "@/server/shared/users";
 import type { WaitingReason, WaitingParty } from "@/server/shared/derived";
 import { insertRequest, type NewRequestInput, type LineFiles } from "@/server/client/requests";
 import type { ClientRequestCreatedDto } from "@/server/client/dto/requests";
+import { lineThumbs, mediaItems, OPS_MEDIA, type MediaItem, type Thumb } from "@/server/shared/media";
+import { linkDomain } from "@/lib/media";
 
 /* ───────────────────────── Queue (F-14) ───────────────────────── */
 
@@ -24,6 +26,8 @@ export type QueueRow = {
   requestRef: string;
   href: string;
   name: string;
+  image: Thumb | null;
+  linkDomain: string | null;
   orgId: string;
   orgName: string;
   qty: number | null;
@@ -70,9 +74,9 @@ function sourceOf(lc: LineContext, requestSource: RequestSource): QueueRow["sour
   return requestSource;
 }
 
-function queueRow(lc: LineContext, extra: { links: LinkMeta[]; images: number; source: RequestSource }, at: Date): QueueRow {
+function queueRow(lc: LineContext, extra: { links: LinkMeta[]; images: number; image: Thumb | null; source: RequestSource }, at: Date): QueueRow {
   return {
-    lineId: lc.id, ref: lc.ref, requestRef: lc.requestRef, href: `/ops/lines/${lc.ref}?tab=spec`, name: lc.name, orgId: lc.orgId, orgName: lc.orgName, qty: lc.qty, unit: lc.unit,
+    lineId: lc.id, ref: lc.ref, requestRef: lc.requestRef, href: `/ops/lines/${lc.ref}?tab=spec`, name: lc.name, image: extra.image, linkDomain: linkDomain(lc.links), orgId: lc.orgId, orgName: lc.orgName, qty: lc.qty, unit: lc.unit,
     links: extra.links, notDurable: extra.links.filter((l) => l.not_durable).length, imagesCount: extra.images, source: sourceOf(lc, extra.source),
     submittedAt: lc.createdAt.toISOString(), lastChangeAt: lc.lastStateChangeAt.toISOString(), daysSinceChange: daysBetween(lc.lastStateChangeAt, at),
     state: lc.state, exception: lc.exception, agentId: lc.assignedAgentId, agentName: lc.agentName, waitingParty: lc.waiting.party, waitingReason: lc.waiting.reason, stale: lc.stale,
@@ -95,13 +99,13 @@ export async function getQueue(ctx: Ctx, opts: { scope?: "queue" | "unassigned" 
     : scope === "waiting" ? QUEUE_STATES.includes(lc.state) || lc.waiting.party === "agency"
     : QUEUE_STATES.includes(lc.state) || isUnassigned({ agentId: lc.assignedAgentId, state: lc.state }));
   const ids = picked.map((l) => l.id);
-  const [images, links, reqRows, agents, clients] = await Promise.all([
-    imageCounts(db, ids), linksMetaFor(db, ids),
+  const [images, links, thumbs, reqRows, agents, clients] = await Promise.all([
+    imageCounts(db, ids), linksMetaFor(db, ids), lineThumbs(db, ids, OPS_MEDIA),
     ids.length ? db.select({ id: requests.id, source: requests.source }).from(requests).where(inArray(requests.id, [...new Set(picked.map((l) => l.requestId))])) : [],
     listAgents(ctx), listClientOrgs(ctx),
   ]);
   const srcByReq = new Map(reqRows.map((r) => [r.id, r.source]));
-  const rows = picked.map((lc) => queueRow(lc, { links: links[lc.id] ?? [], images: images[lc.id] ?? 0, source: srcByReq.get(lc.requestId) ?? "portal" }, at))
+  const rows = picked.map((lc) => queueRow(lc, { links: links[lc.id] ?? [], images: images[lc.id] ?? 0, image: thumbs.get(lc.id) ?? null, source: srcByReq.get(lc.requestId) ?? "portal" }, at))
     .sort((a, b) => (a.agentId ? 1 : 0) - (b.agentId ? 1 : 0) || a.submittedAt.localeCompare(b.submittedAt));
   return { rows, agents, clients };
 }
@@ -140,6 +144,8 @@ export type OpsRequestRow = {
   updatedAt: string;
   lastChangeAt: string;
   firstLineName: string;
+  /** pictures of the first lines, in line order */
+  media: MediaItem[];
 };
 
 export async function listOpsRequests(ctx: Ctx): Promise<{ rows: OpsRequestRow[]; agents: Agent[]; clients: ClientOrg[] }> {
@@ -149,7 +155,7 @@ export async function listOpsRequests(ctx: Ctx): Promise<{ rows: OpsRequestRow[]
   const lcs = await loadLineContexts(db, { includeDrafts: true, includeCancelled: true });
   const byReq = new Map<string, LineContext[]>();
   for (const lc of lcs) byReq.set(lc.requestId, [...(byReq.get(lc.requestId) ?? []), lc]);
-  const [agents, clients] = await Promise.all([listAgents(ctx), listClientOrgs(ctx)]);
+  const [agents, clients, thumbs] = await Promise.all([listAgents(ctx), listClientOrgs(ctx), lineThumbs(db, lcs.map((l) => l.id), OPS_MEDIA)]);
   const rows: OpsRequestRow[] = reqRows.map(({ r, orgName }) => {
     const lines = (byReq.get(r.id) ?? []).sort((a, b) => a.lineNo - b.lineNo);
     const counts = new Map<LineState, number>();
@@ -163,6 +169,7 @@ export async function listOpsRequests(ctx: Ctx): Promise<{ rows: OpsRequestRow[]
       agentIds, agentNames, staleCount: lines.filter((l) => l.stale).length, waitingUsCount: lines.filter((l) => l.waiting.party === "agency").length,
       unassignedCount: lines.filter((l) => isUnassigned({ agentId: l.assignedAgentId, state: l.state })).length,
       submittedAt: r.submittedAt?.toISOString() ?? null, updatedAt: r.updatedAt.toISOString(), lastChangeAt: last.toISOString(), firstLineName: lines[0]?.name ?? "",
+      media: mediaItems(lines, thumbs),
     };
   });
   return { rows, agents, clients };
@@ -208,8 +215,8 @@ export async function getOpsRequest(ctx: Ctx, ref: string): Promise<OpsRequestDe
   const lineIds = (await db.select({ id: requestLines.id }).from(requestLines).where(and(eq(requestLines.requestId, r.id), isNull(requestLines.deletedAt)))).map((x) => x.id);
   const lcs = (await loadLineContexts(db, { lineIds, includeDrafts: true, includeCancelled: true })).sort((a, b) => a.lineNo - b.lineNo);
   const entityIds = [r.id, ...lineIds];
-  const [images, links, docRows, cRows, eRows, agents, creator] = await Promise.all([
-    imageCounts(db, lineIds), linksMetaFor(db, lineIds),
+  const [images, links, thumbs, docRows, cRows, eRows, agents, creator] = await Promise.all([
+    imageCounts(db, lineIds), linksMetaFor(db, lineIds), lineThumbs(db, lineIds, OPS_MEDIA),
     entityIds.length ? db.select({ d: documents, f: files }).from(documents).innerJoin(files, eq(files.id, documents.fileId)).where(and(inArray(documents.entityId, entityIds), isNull(documents.deletedAt))).orderBy(desc(documents.createdAt)) : [],
     db.select().from(comments).where(and(inArray(comments.entityId, entityIds), isNull(comments.deletedAt))).orderBy(desc(comments.createdAt)).limit(200),
     db.select().from(activityEvents).where(inArray(activityEvents.entityId, entityIds)).orderBy(desc(activityEvents.createdAt)).limit(400),
@@ -218,7 +225,7 @@ export async function getOpsRequest(ctx: Ctx, ref: string): Promise<OpsRequestDe
   ]);
   const refOf = (entityId: string) => (entityId === r.id ? r.ref : lcs.find((l) => l.id === entityId)?.ref ?? r.ref);
   const lines: OpsRequestLine[] = lcs.map((lc) => ({
-    ...queueRow(lc, { links: links[lc.id] ?? [], images: images[lc.id] ?? 0, source: r.source }, at),
+    ...queueRow(lc, { links: links[lc.id] ?? [], images: images[lc.id] ?? 0, image: thumbs.get(lc.id) ?? null, source: r.source }, at),
     lineNo: lc.lineNo, milestone: lc.milestone, note: lc.note, clientSku: lc.clientSku, specVersion: lc.specVersion,
     offerRef: lc.offer?.ref ?? null, sampleRef: lc.sample?.ref ?? null, orderRef: lc.order?.ref ?? null, sourcing: lc.sourcing,
     href: lc.order ? `/ops/orders/${lc.order.ref}` : `/ops/lines/${lc.ref}?tab=${lc.state === "submitted" || lc.state === "in_review" || lc.state === "spec_frozen" ? "spec" : lc.state === "offer_ready" ? "offer" : "sourcing"}`,

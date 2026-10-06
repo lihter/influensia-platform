@@ -4,7 +4,8 @@ import { useTranslations } from "next-intl";
 import { Search, X, Clock } from "lucide-react";
 import type { OpsRequestRow, Agent, ClientOrg } from "@/server/ops/requests";
 import { LINE_STATES, type LineState } from "@/db/enums";
-import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
+import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { MediaCell } from "@/components/shared/media";
 import { StateChip, UtilityBadge } from "@/components/shared/chips";
 import { STATE_TONE } from "@/components/shared/state-tone";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -62,7 +63,7 @@ export function RequestsTable({ rows, agents, clients, me, initial }: { rows: Op
   const reset = () => { setClient(""); setState(""); setAgent(""); setStatus(""); setStaleOnly(false); setMine(false); setQ(""); };
 
   const columns: DataTableColumn<OpsRequestRow>[] = [
-    { id: "ref", accessorKey: "ref", header: "Request", meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.firstLineName || row.original.ref} sub={<>{row.original.ref} · {row.original.lineCount} {row.original.lineCount === 1 ? "line" : "lines"}</>} /> },
+    { id: "ref", accessorKey: "ref", header: "Request", meta: { sticky: true }, cell: ({ row }) => <MediaCell items={row.original.media} total={row.original.lineCount} title={row.original.firstLineName || row.original.ref} sub={<>{row.original.ref} · {row.original.lineCount} {row.original.lineCount === 1 ? "line" : "lines"}</>} /> },
     { id: "client", accessorKey: "orgName", header: O.col.client, cell: ({ row }) => <span className="block max-w-[16ch] truncate" title={row.original.orgName}>{row.original.orgName}</span> },
     { id: "status", accessorKey: "status", header: O.col.status, meta: { className: "hidden 2xl:table-cell" }, cell: ({ row }) => <UtilityBadge kind={row.original.status === "draft" ? "draft" : row.original.status === "closed" ? "version" : "catalog"} className="normal-case tracking-normal">{O.requests.status[row.original.status]}</UtilityBadge> },
     { id: "states", accessorFn: (r) => r.states.map((s) => `${s.state} ${s.count}`).join(" · "), header: O.col.states, enableSorting: false, cell: ({ row }) => <StateRollup states={row.original.states} /> },

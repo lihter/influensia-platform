@@ -13,6 +13,7 @@ export { DocumentRow, formatBytes } from "./document-row";
 export { FactoryLabel } from "./factory-label";
 export { FactsStrip, type Fact } from "./facts-strip";
 export { DataTable, PrimaryCell, CellSub, type DataTableColumn } from "./data-table";
+export { ProductThumb, ThumbStack, MediaCell, type ThumbImage, type ThumbItem, type ThumbSize } from "./media";
 export { FormShell } from "./form-shell";
 export * from "./state-tone";
 export { FilterToggle } from "./filter-toggle";

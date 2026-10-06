@@ -15,6 +15,7 @@ import { nextRef } from "@/server/shared/ids";
 import { now } from "@/server/shared/clock";
 import { userNames } from "@/server/shared/users";
 import { SUPPLIER_TYPE_VERDICTS, VERDICT_SOURCES, SUPPLIER_GRADES, CONTACT_CHANNELS, type SupplierTypeVerdict, type VerdictSource, type SupplierGrade, type ContactChannel, type ParticipationStatus, type DocumentKind } from "@/db/enums";
+import { lineThumbs, OPS_MEDIA, type Thumb } from "@/server/shared/media";
 
 /* Re-exported so page/action files (which may not import @/db/*) can build selects and zod enums. */
 export { SUPPLIER_TYPE_VERDICTS, VERDICT_SOURCES, SUPPLIER_GRADES, CONTACT_CHANNELS };
@@ -123,7 +124,7 @@ export async function supplierOptions(ctx: Ctx): Promise<{ id: string; ref: stri
 export type SupplierContact = { id: string; name: string | null; channel: ContactChannel; handle: string | null; phone: string | null; isPrimary: boolean };
 export type SupplierDocument = { id: string; kind: "price_list" | "catalogue"; filename: string; bytes: number; storageKey: string; receivedAt: string | null; validUntil: string | null; currency: string | null; notes: string | null; uploadedBy: string | null };
 export type SupplierParticipation = {
-  id: string; lineId: string; lineRef: string; lineName: string; requestRef: string; orgName: string; lineState: string; status: ParticipationStatus; reason: string | null;
+  id: string; lineId: string; lineRef: string; lineName: string; image: Thumb | null; requestRef: string; orgName: string; lineState: string; status: ParticipationStatus; reason: string | null;
   contactName: string | null; firstContactAt: string | null; lastContactAt: string | null; quotesCount: number;
   latestQuote: { id: string; version: number; currency: string; unit: string; incoterm: string | null; incotermUncertain: boolean; port: string | null; moq: number | null; leadDays: number | null; validUntil: string | null; unitPriceMinorE2: number | null; usdMinorE2: number | null; receivedAt: string } | null;
 };
@@ -176,6 +177,7 @@ export async function getSupplier(ctx: Ctx, ref: string): Promise<SupplierDetail
   const qRows = partIds.length ? await db.select().from(quotes).where(inArray(quotes.participationId, partIds)).orderBy(desc(quotes.version), desc(quotes.receivedAt)) : [];
   const breakRows = qRows.length ? await db.select().from(quotePriceBreaks).where(inArray(quotePriceBreaks.quoteId, qRows.map((q) => q.id))) : [];
   const contactBy = new Map(contacts.map((c) => [c.id, c]));
+  const thumbs = await lineThumbs(db, parts.map((x) => x.line.id), OPS_MEDIA);
   const participations: SupplierParticipation[] = parts.map(({ p, line, requestRef, orgName: on }) => {
     const qs = qRows.filter((q) => q.participationId === p.id);
     const q = qs[0] ?? null;
@@ -183,7 +185,7 @@ export async function getSupplier(ctx: Ctx, ref: string): Promise<SupplierDetail
     const atQty = brks.length ? ([...brks].reverse().find((b) => b.minQty <= (line.qtyFirst ?? 0)) ?? brks[0]) : null;
     const c = p.contactId ? contactBy.get(p.contactId) : null;
     return {
-      id: p.id, lineId: line.id, lineRef: line.lineRef, lineName: line.name, requestRef, orgName: on, lineState: line.state, status: p.status, reason: p.reason,
+      id: p.id, lineId: line.id, lineRef: line.lineRef, lineName: line.name, image: thumbs.get(line.id) ?? null, requestRef, orgName: on, lineState: line.state, status: p.status, reason: p.reason,
       contactName: c ? c.name ?? c.handle ?? null : null, firstContactAt: p.firstContactAt?.toISOString() ?? null, lastContactAt: p.lastContactAt?.toISOString() ?? null, quotesCount: qs.length,
       latestQuote: q ? { id: q.id, version: q.version, currency: q.currency, unit: q.unit, incoterm: q.incoterm, incotermUncertain: q.incotermUncertain, port: q.port, moq: q.moq, leadDays: q.leadDays, validUntil: q.validUntil, unitPriceMinorE2: atQty?.unitPriceMinorE2 ?? null, usdMinorE2: q.normalisedUsdMinorE2, receivedAt: q.receivedAt.toISOString() } : null,
     };

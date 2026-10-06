@@ -18,7 +18,7 @@ import { PageBand } from "@/components/shared/section-band";
 import { referenceMeta } from "./catalog-card";
 import { DataTable, CellSub, type DataTableColumn } from "@/components/shared/data-table";
 import { UtilityBadge } from "@/components/shared/chips";
-import { ProductThumb } from "../product-thumb";
+import { MediaCell, ProductThumb } from "@/components/shared/media";
 import { perUnit } from "../client-format";
 import { RequestOfferForm } from "./request-offer-form";
 
@@ -39,14 +39,12 @@ export function CatalogGrid({ products, categories, action }: { products: Client
     {
       id: "product", header: "Product", accessorFn: (p) => p.name,
       cell: ({ row: { original: p } }) => (
-        <div className="flex items-center gap-4 py-2">
-          <ProductThumb image={p.image} name={p.name} size="xl" />
-          <div className="min-w-0 max-w-[44ch]">
-            <Link href={`/app/catalog/${p.ref}`} className="block truncate text-[15px] font-medium leading-5 text-foreground hover:underline" title={p.name} onClick={(e) => e.stopPropagation()}>{p.name}</Link>
-            <CellSub>{p.category ? `${label("productCategory", p.category)} · ` : ""}<span className="font-mono">{p.ref}</span></CellSub>
-            {p.orderedBefore && <UtilityBadge kind="repeat" className="mt-1 normal-case tracking-normal">Ordered before</UtilityBadge>}
-          </div>
-        </div>
+        <MediaCell
+          image={p.image} name={p.name} size="xl" variant="comfortable" textWidth="max-w-[44ch]"
+          title={<Link href={`/app/catalog/${p.ref}`} className="hover:underline" title={p.name} onClick={(e) => e.stopPropagation()}>{p.name}</Link>}
+          sub={<>{p.category && <span className="font-sans">{label("productCategory", p.category)} · </span>}{p.ref}</>}
+          extra={p.orderedBefore && <UtilityBadge kind="repeat" className="mt-1 normal-case tracking-normal">Ordered before</UtilityBadge>}
+        />
       ),
       meta: { sticky: true },
     },

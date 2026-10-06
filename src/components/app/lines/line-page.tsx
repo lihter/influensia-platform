@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ProductThumb } from "../product-thumb";
+import { ProductThumb } from "@/components/shared/media";
 import { ArrowRight, ExternalLink, Factory, MessageCircle } from "lucide-react";
 import type { ClientLinePageDto } from "@/server/client/dto/lines";
 import { formatMoney, formatUnitPrice, formatQty } from "@/server/shared/money";

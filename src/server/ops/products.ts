@@ -16,6 +16,7 @@ import { nextRef } from "@/server/shared/ids";
 import { now, today } from "@/server/shared/clock";
 import { userNames } from "@/server/shared/users";
 import { PRODUCT_CATEGORIES, PRODUCT_VISIBILITIES, IMAGE_KINDS, type ProductCategory, type ProductVisibility, type ImageKind, type LineState } from "@/db/enums";
+import { productThumbs, OPS_MEDIA, type Thumb } from "@/server/shared/media";
 
 export { PRODUCT_CATEGORIES, PRODUCT_VISIBILITIES, IMAGE_KINDS };
 export type { ProductCategory, ProductVisibility, ImageKind };
@@ -27,6 +28,7 @@ export type ProductRow = {
   id: string; ref: string; name: string; category: string | null; unit: string; visibility: ProductVisibility; ownerOrgName: string | null;
   referencePriceMinorE2: number | null; referenceCurrency: string; referenceMoq: number | null; referenceIncoterm: string | null; referencePort: string | null;
   referenceSpecVersion: number | null; referenceValidUntil: string | null; priceStale: boolean; priceExpiring: boolean; specVersions: number; cleanImages: number;
+  image: Thumb | null;
   linesCount: number; ordersCount: number; publishedAt: string | null; updatedAt: string | null;
 };
 
@@ -38,7 +40,8 @@ export async function listProducts(ctx: Ctx, f: ProductFilters = {}): Promise<Pr
   const rows = await db.select({ p: products, ownerOrgName: organizations.name }).from(products).leftJoin(organizations, eq(organizations.id, products.ownerOrgId)).where(isNull(products.deletedAt)).orderBy(products.ref);
   if (!rows.length) return [];
   const ids = rows.map((r) => r.p.id);
-  const [specs, imgs, lines, ols] = await Promise.all([
+  const [thumbs, specs, imgs, lines, ols] = await Promise.all([
+    productThumbs(db, ids, OPS_MEDIA),
     db.select({ productId: productSpecs.productId, n: sql<number>`count(*)` }).from(productSpecs).where(inArray(productSpecs.productId, ids)).groupBy(productSpecs.productId),
     db.select({ productId: productImages.productId, n: sql<number>`count(*)` }).from(productImages).where(and(inArray(productImages.productId, ids), eq(productImages.kind, "clean"))).groupBy(productImages.productId),
     db.select({ productId: requestLines.productId, n: sql<number>`count(*)` }).from(requestLines).where(and(inArray(requestLines.productId, ids), isNull(requestLines.deletedAt))).groupBy(requestLines.productId),
@@ -55,7 +58,7 @@ export async function listProducts(ctx: Ctx, f: ProductFilters = {}): Promise<Pr
       referencePriceMinorE2: p.referencePriceMinorE2, referenceCurrency: p.referenceCurrency ?? "USD", referenceMoq: p.referenceMoq, referenceIncoterm: p.referenceIncoterm, referencePort: p.referencePort,
       referenceSpecVersion: p.referenceSpecVersion, referenceValidUntil: p.referenceValidUntil,
       priceStale: !!p.referenceValidUntil && p.referenceValidUntil < t, priceExpiring: !!p.referenceValidUntil && p.referenceValidUntil >= t && p.referenceValidUntil <= soon,
-      specVersions: sc.get(p.id) ?? 0, cleanImages: ic.get(p.id) ?? 0, linesCount: lc.get(p.id) ?? 0, ordersCount: oc.get(p.id) ?? 0,
+      specVersions: sc.get(p.id) ?? 0, cleanImages: ic.get(p.id) ?? 0, image: thumbs.get(p.id) ?? null, linesCount: lc.get(p.id) ?? 0, ordersCount: oc.get(p.id) ?? 0,
       publishedAt: p.publishedAt?.toISOString() ?? null, updatedAt: p.updatedAt?.toISOString() ?? null,
     }) satisfies ProductRow)
     .filter((r) => {

@@ -1,6 +1,7 @@
 "use client";
 import type { RangeRow } from "@/server/ops/ranges";
 import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
+import { MediaCell } from "@/components/shared/media";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FactoryLabel } from "@/components/shared/factory-label";
 import { DateTime } from "@/components/shared/formatters";
@@ -14,7 +15,7 @@ export function RangeStatus({ r }: { r: { publishedAt: string | null; leakOk: bo
 
 export function RangesTable({ rows }: { rows: RangeRow[] }) {
   const columns: DataTableColumn<RangeRow>[] = [
-    { id: "ref", accessorKey: "ref", header: "Ref", meta: { sticky: true, width: "6rem" }, cell: ({ row }) => <span className="font-mono text-xs">{row.original.ref}</span> },
+    { id: "ref", accessorKey: "ref", header: "Range", meta: { sticky: true }, cell: ({ row }) => <MediaCell items={row.original.media} total={row.original.itemCount} title={row.original.displayName ?? <span className="font-normal text-muted-foreground">No catalogue name yet</span>} sub={row.original.ref} /> },
     { id: "label", accessorKey: "label", header: "Shown as", cell: ({ row }) => (row.original.label ? <FactoryLabel label={row.original.label} disclosed={false} /> : <span className="text-faint">assigned on publish</span>) },
     { id: "supplier", accessorKey: "supplierName", header: "Supplier (ops)", cell: ({ row }) => <PrimaryCell title={row.original.supplierName} sub={row.original.supplierRef} /> },
     { id: "org", accessorKey: "orgName", header: "Client" },

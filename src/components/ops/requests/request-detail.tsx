@@ -8,7 +8,8 @@ import { Loader2, ChevronDown, ExternalLink, AlertCircle, Image as ImageIcon, Ey
 import type { OpsRequestDetail, OpsRequestLine, Agent } from "@/server/ops/requests";
 import type { ActionResult } from "@/server/shared/http";
 import { PageHeader } from "@/components/shared/page-header";
-import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
+import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { MediaCell } from "@/components/shared/media";
 import { StateChip, MilestoneChip, ExceptionChip, UtilityBadge } from "@/components/shared/chips";
 import { Timeline, type TimelineEntry } from "@/components/shared/timeline";
 import { DocumentRow } from "@/components/shared/document-row";
@@ -57,7 +58,7 @@ export function OpsRequestDetailView({ dto, me, claim, assign }: { dto: OpsReque
     { id: "no", accessorKey: "lineNo", header: "#", meta: { numeric: true, width: "3rem" }, cell: ({ row }) => <span className="font-mono text-xs">{String(row.original.lineNo).padStart(2, "0")}</span> },
     {
       id: "name", accessorKey: "name", header: O.col.name,
-      cell: ({ row }) => <PrimaryCell title={row.original.name} className="max-w-[30ch]" sub={<span className="inline-flex items-center gap-2">{row.original.ref}{row.original.clientSku && <span>· {row.original.clientSku}</span>}</span>} />,
+      cell: ({ row }) => <MediaCell image={row.original.image} domain={row.original.linkDomain} title={row.original.name} textWidth="max-w-[30ch]" sub={<>{row.original.ref}{row.original.clientSku && <> · {row.original.clientSku}</>}</>} />,
     },
     { id: "qty", accessorKey: "qty", header: O.col.qty, meta: { numeric: true }, cell: ({ row }) => (row.original.qty ? <Qty qty={row.original.qty} unit={row.original.unit} /> : "—") },
     {

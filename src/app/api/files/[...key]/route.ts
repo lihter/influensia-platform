@@ -4,6 +4,8 @@ import { getStorage, assertValidKey } from "@/server/shared/storage";
 import { canReadKey, agencyOrgId, downloadNameFor } from "@/server/shared/files";
 import { getDbHandle } from "@/server/shared/db-handle";
 import { route } from "@/server/shared/http";
+import { imageVariant, VARIANT_CONTENT_TYPE } from "@/server/shared/image-variants";
+import { isThumbWidth } from "@/lib/media";
 
 export const runtime = "nodejs";
 
@@ -12,15 +14,23 @@ export const runtime = "nodejs";
  * - clients: orgId must equal ctx.orgId (or the agency's shared catalog assets) AND the segment must be `client`;
  *   an `/internal/` key is 404 for clients even if a documents row somehow said `client` (SPEC 5.6)
  * - ops: any valid key
+ * `?w=96|160|320|640` on an image → a square WebP thumbnail of that width (same access rule; cached, see image-variants).
  */
 export const GET = route(async (req: Request, { params }: { params: Promise<{ key: string[] }> }) => {
   const ctx = await authorize();
   const key = (await params).key.join("/");
   try { assertValidKey(key); } catch { return new NextResponse("bad key", { status: 400 }); }
   if (!canReadKey(ctx, key, await agencyOrgId(await getDbHandle()))) return new NextResponse("not found", { status: 404 });
+  const url = new URL(req.url);
+  const w = Number(url.searchParams.get("w"));
+  if (w && isThumbWidth(w)) {
+    const body = await imageVariant(key, w, () => getStorage().get(key));
+    if (!body) return new NextResponse("not found", { status: 404 });
+    // keys are immutable (uuid per upload) → safe to cache in this browser; `private` keeps shared caches out
+    return new NextResponse(new Uint8Array(body), { headers: { "content-type": VARIANT_CONTENT_TYPE, "content-length": String(body.length), "cache-control": "private, max-age=604800, immutable" } });
+  }
   const obj = await getStorage().get(key);
   if (!obj) return new NextResponse("not found", { status: 404 });
-  const url = new URL(req.url);
   // QA-46: the download name comes from the database record, never from the (spoofable) `filename` query
   const filename = await downloadNameFor(await getDbHandle(), key, ctx);
   const disposition = url.searchParams.get("dl") ? "attachment" : "inline";

@@ -10,7 +10,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import type { QueueRow, Agent, ClientOrg } from "@/server/ops/requests";
 import type { ActionResult } from "@/server/shared/http";
 import { LINE_STATES } from "@/db/enums";
-import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
+import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { MediaCell } from "@/components/shared/media";
 import { StateChip, ExceptionChip, UtilityBadge } from "@/components/shared/chips";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Age, DateTime, Qty } from "@/components/shared/formatters";
@@ -85,7 +86,7 @@ export function QueueTable({ rows, agents, clients, me, scope, initial, claim, a
       enableSorting: false, meta: { width: "2.5rem" },
       cell: ({ row }) => <input type="checkbox" aria-label={`Select ${row.original.ref}`} className="size-4 accent-green-600" checked={selected.has(row.original.lineId)} onClick={(e) => e.stopPropagation()} onChange={(e) => setSelected((s) => { const n = new Set(s); if (e.target.checked) n.add(row.original.lineId); else n.delete(row.original.lineId); return n; })} data-testid="select-row" />,
     },
-    { id: "ref", accessorKey: "ref", header: O.col.name, meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={row.original.ref} className="max-w-[34ch]" /> },
+    { id: "ref", accessorKey: "ref", header: O.col.name, meta: { sticky: true }, cell: ({ row }) => <MediaCell image={row.original.image} domain={row.original.linkDomain} title={row.original.name} sub={row.original.ref} /> },
     { id: "client", accessorKey: "orgName", header: O.col.client, cell: ({ row }) => <span className="block max-w-[16ch] truncate" title={row.original.orgName}>{row.original.orgName}</span> },
     { id: "qty", accessorKey: "qty", header: O.col.qty, meta: { numeric: true }, cell: ({ row }) => (row.original.qty ? <Qty qty={row.original.qty} unit={row.original.unit} /> : "—") },
     {

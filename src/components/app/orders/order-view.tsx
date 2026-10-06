@@ -1,4 +1,4 @@
-import { ProductThumb, ThumbStack } from "../product-thumb";
+import { ProductThumb, ThumbStack } from "@/components/shared/media";
 import Link from "next/link";
 import { Factory, Download, Check, MessageCircle, Triangle } from "lucide-react";
 import type { ClientOrderPageDto } from "@/server/client/dto/orders";

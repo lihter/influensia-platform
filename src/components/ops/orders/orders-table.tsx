@@ -2,7 +2,8 @@
 import * as React from "react";
 import { Search } from "lucide-react";
 import type { OpsOrderRow } from "@/server/ops/orders";
-import { DataTable, PrimaryCell, type DataTableColumn } from "@/components/shared/data-table";
+import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { MediaCell } from "@/components/shared/media";
 import { StateChip, ExceptionChip, MilestoneChip } from "@/components/shared/chips";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Age, DateTime, Money } from "@/components/shared/formatters";
@@ -20,7 +21,7 @@ export function OrdersTable({ rows }: { rows: OpsOrderRow[] }) {
   const data = rows.filter((r) => (!staleOnly || r.stale) && (!client || r.orgName === client) && (state === "all" || (state === "delivered" ? r.milestone === "delivered" : r.milestone !== "delivered")));
 
   const columns: DataTableColumn<OpsOrderRow>[] = [
-    { id: "ref", accessorKey: "ref", header: "Order", meta: { sticky: true }, cell: ({ row }) => <PrimaryCell title={row.original.name} sub={<>{row.original.ref}{row.original.linesCount > 1 ? ` · ${row.original.linesCount} lines` : ""}</>} /> },
+    { id: "ref", accessorKey: "ref", header: "Order", meta: { sticky: true }, cell: ({ row }) => <MediaCell items={row.original.media} total={row.original.linesCount} title={row.original.name} sub={<>{row.original.ref}{row.original.linesCount > 1 ? ` · ${row.original.linesCount} lines` : ""}</>} /> },
     { id: "client", accessorKey: "orgName", header: "Client", cell: ({ row }) => <span className="block max-w-[16ch] truncate" title={row.original.orgName}>{row.original.orgName}</span> },
     { id: "state", accessorKey: "state", header: "State", cell: ({ row }) => <span className="inline-flex items-center gap-1.5"><StateChip state={row.original.state} stale={row.original.stale} />{row.original.exception && <ExceptionChip exception={row.original.exception} />}</span> },
     { id: "milestone", accessorKey: "milestone", header: "Milestone", cell: ({ row }) => <MilestoneChip milestone={row.original.milestone} waitingOnClient={row.original.waitingParty === "client"} /> },

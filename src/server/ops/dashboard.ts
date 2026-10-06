@@ -8,6 +8,8 @@ import { loadLineContexts, type LineContext } from "@/server/shared/line-context
 import { daysBetween } from "@/server/shared/dates";
 import type { LineState, LineException } from "@/db/enums";
 import type { WaitingReason } from "@/server/shared/derived";
+import { lineThumbs, OPS_MEDIA, type Thumb } from "@/server/shared/media";
+import { linkDomain } from "@/lib/media";
 
 export type OpsRow = {
   key: string;
@@ -15,6 +17,9 @@ export type OpsRow = {
   ref: string;
   href: string;
   name: string;
+  image: Thumb | null;
+  /** shop domain of the first client link — placeholder text while there is no photo */
+  linkDomain: string | null;
   orgName: string;
   state: LineState;
   exception: LineException | null;
@@ -48,6 +53,8 @@ function toRow(lc: LineContext): OpsRow {
     ref,
     href: isOrder ? `/ops/orders/${ref}` : `/ops/lines/${ref}?tab=${tab}`,
     name: lc.name,
+    image: null,
+    linkDomain: linkDomain(lc.links),
     orgName: lc.orgName,
     state: lc.state,
     exception: lc.exception,
@@ -83,6 +90,8 @@ export async function getOpsDashboard(ctx: Ctx, opts?: { mine?: boolean }): Prom
     // unassigned rows stay visible to everyone (they are listed under Unassigned only, QA-10/QA-29)
     rows.push(r);
   }
+  const thumbs = await lineThumbs(db, rows.map((r) => r.lineId), OPS_MEDIA);
+  for (const r of rows) r.image = thumbs.get(r.lineId) ?? null;
   const stale = rows.filter((r) => r.stale).sort((a, b) => a.lastChangeAt.localeCompare(b.lastChangeAt));
   const waitingUs = rows.filter((r) => !!r.agentId && !r.stale && lcs.find((l) => l.id === r.lineId)?.waiting.party === "agency").sort((a, b) => a.lastChangeAt.localeCompare(b.lastChangeAt));
   const waitingClient = rows.filter((r) => lcs.find((l) => l.id === r.lineId)?.waiting.party === "client").sort((a, b) => a.lastChangeAt.localeCompare(b.lastChangeAt));

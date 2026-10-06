@@ -20,6 +20,7 @@ import { nextRef } from "@/server/shared/ids";
 import { now } from "@/server/shared/clock";
 import { clientUsersOf, opsUsers, userNames } from "@/server/shared/users";
 import type { LeakCheckStored } from "@/db/types";
+import { fileThumbs, MEDIA_STACK_MAX, type MediaItem } from "@/server/shared/media";
 
 /* ───────────────────────── PDF text layer (best effort, no dependency) ───────────────────────── */
 
@@ -49,7 +50,7 @@ const unescapePdf = (s: string) => s.replace(/\\([nrtbf()\\]|\d{1,3})/g, (_, c: 
 
 /* ───────────────────────── shapes ───────────────────────── */
 
-export type RangeRow = { id: string; ref: string; label: string | null; supplierRef: string; supplierName: string; orgId: string; orgName: string; itemCount: number; hasPdf: boolean; publishedAt: string | null; createdAt: string; updatedAt: string; leakOk: boolean | null };
+export type RangeRow = { id: string; ref: string; label: string | null; displayName: string | null; media: MediaItem[]; supplierRef: string; supplierName: string; orgId: string; orgName: string; itemCount: number; hasPdf: boolean; publishedAt: string | null; createdAt: string; updatedAt: string; leakOk: boolean | null };
 export type RangeItem = { id: string; name: string; productId: string | null; productRef: string | null; imageUrl: string | null; imageFilename: string | null; moq: number | null; priceMinorE2: number | null; currency: string; unit: string; madeHere: boolean | null; note: string | null; sortOrder: number };
 export type RangeDetail = {
   id: string; ref: string; label: string | null; displayName: string | null; supplierId: string; supplierRef: string; supplierName: string; supplierCity: string | null; orgId: string; orgName: string;
@@ -67,8 +68,14 @@ export async function listRanges(ctx: Ctx): Promise<RangeRow[]> {
     .select({ r: factoryRanges, orgName: organizations.name, supplierRef: suppliers.ref, supplierName: suppliers.legalName, itemCount: sql<number>`(select count(*) from app.factory_range_items i where i.range_id = ${factoryRanges.id})` })
     .from(factoryRanges).innerJoin(organizations, eq(organizations.id, factoryRanges.orgId)).innerJoin(suppliers, eq(suppliers.id, factoryRanges.supplierId))
     .where(isNull(factoryRanges.deletedAt)).orderBy(desc(factoryRanges.ref));
+  const items = rows.length
+    ? await db.select({ rangeId: factoryRangeItems.rangeId, name: factoryRangeItems.name, fileId: factoryRangeItems.cleanImageFileId }).from(factoryRangeItems)
+      .where(inArray(factoryRangeItems.rangeId, rows.map((x) => x.r.id))).orderBy(asc(factoryRangeItems.sortOrder), asc(factoryRangeItems.createdAt))
+    : [];
+  const thumbs = await fileThumbs(db, items.map((i) => i.fileId));
+  const mediaOf = (rangeId: string): MediaItem[] => items.filter((i) => i.rangeId === rangeId).slice(0, MEDIA_STACK_MAX).map((i) => ({ name: i.name, image: (i.fileId && thumbs.get(i.fileId)) || null }));
   return rows.map(({ r, orgName, supplierRef, supplierName, itemCount }) => ({
-    id: r.id, ref: r.ref, label: r.label, supplierRef, supplierName, orgId: r.orgId, orgName, itemCount: Number(itemCount), hasPdf: !!(r.pdfSourceFileId || r.pdfFileId),
+    id: r.id, ref: r.ref, label: r.label, displayName: r.displayName, media: mediaOf(r.id), supplierRef, supplierName, orgId: r.orgId, orgName, itemCount: Number(itemCount), hasPdf: !!(r.pdfSourceFileId || r.pdfFileId),
     publishedAt: r.publishedAt?.toISOString() ?? null, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), leakOk: r.leakCheckResult ? r.leakCheckResult.ok : null,
   }));
 }

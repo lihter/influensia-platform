@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ProductThumb } from "../product-thumb";
 import { ArrowRight, ExternalLink, Factory, MessageCircle } from "lucide-react";
 import type { ClientLinePageDto } from "@/server/client/dto/lines";
 import { formatMoney, formatUnitPrice, formatQty } from "@/server/shared/money";
@@ -187,8 +188,9 @@ export function ClientLinePage({ dto, initialTab }: { dto: ClientLinePageDto; in
       <PageHeader
         band
         className="pb-6"
-        crumbs={[{ href: "/app/requests", label: "Requests & orders" }, { href: `/app/requests/${l.requestRef}`, label: <span className="font-mono">{l.requestRef}</span> }, { label: <span className="font-mono">{String(l.lineNo).padStart(2, "0")}</span> }]}
+        crumbs={[{ href: "/app/requests", label: "Requests" }, { href: `/app/requests/${l.requestRef}`, label: <span className="font-mono">{l.requestRef}</span> }, { label: <span className="font-mono">{String(l.lineNo).padStart(2, "0")}</span> }]}
         title={l.name}
+        media={<ProductThumb image={dto.image} name={l.name} domain={l.links[0] ? (() => { try { return new URL(l.links[0]).hostname.replace(/^www\./, ""); } catch { return null; } })() : null} size="xl" />}
         meta={<>
           <span data-testid="milestone-suffix">{l.exception ? <ExceptionChip exception={l.exception} client /> : <MilestoneChip milestone={l.milestone} waitingOnClient={waitingOnClient} label={chipLabel(l)} />}</span>
           {l.exception === "on_hold" && l.onHoldReason && <span className="text-xs text-ink-2">{l.onHoldReason}</span>}

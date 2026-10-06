@@ -32,6 +32,8 @@ import { lineExtras, milestoneDatesFor, specFieldsFor, offerOutcomeOf } from "./
 import { canRequestSpecChange } from "./lines";
 import { collapseClientUpdates, collapseClientHistory, SAME_DAY_MS } from "@/server/shared/timeline";
 import { parseLink } from "@/components/app/requests/link-parse";
+import { lineThumbnails, linkDomain } from "./thumbnails";
+import type { ClientProductImageDto } from "./dto/product";
 
 /* ───────────────────────── Input schema (shared by the client + ops actions) ───────────────────────── */
 
@@ -223,7 +225,7 @@ export function tabOf(lc: LineContext): ClientListTabDto {
   return "active";
 }
 
-export function listRow(lc: LineContext): ClientListRowDto {
+export function listRow(lc: LineContext, image: ClientProductImageDto | null = null): ClientListRowDto {
   const orderRef = lc.order?.ref ?? null;
   return ClientListRowDto.parse({
     id: lc.id, ref: lc.ref, requestRef: lc.requestRef, orderRef,
@@ -233,6 +235,7 @@ export function listRow(lc: LineContext): ClientListRowDto {
     subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat, offerStatus: lc.offer?.status }),
     milestoneLabel: clientMilestoneLabel(lc.state, lc.milestone), offerOutcome: offerOutcomeOf(lc),
     exception: lc.exception, exceptionText: exceptionClientText(lc.exception), waitingReason: clientWaitingReason(lc), sourcingProgress: lc.sourcing,
+    image, linkDomain: linkDomain(lc.links),
     etaLabel: etaLabelFor(lc), isRepeat: lc.isRepeat, isDraft: lc.state === "draft", isClosed: lc.exception === "cancelled", updatedAt: lc.updatedAt.toISOString(), lastChangeAt: lc.lastStateChangeAt.toISOString(),
   });
 }
@@ -242,9 +245,10 @@ export async function listClientRequests(ctx: Ctx): Promise<ClientRequestListDto
   const db = await getDb();
   const [org] = await db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, ctx.orgId)).limit(1);
   const lcs = await loadLineContexts(db, { orgId: ctx.orgId, includeDrafts: true, includeCancelled: true });
-  const rows = lcs
-    .sort((a, b) => MILESTONES.indexOf(a.milestone) - MILESTONES.indexOf(b.milestone) || b.updatedAt.getTime() - a.updatedAt.getTime())
-    .map(listRow);
+  lcs
+    .sort((a, b) => MILESTONES.indexOf(a.milestone) - MILESTONES.indexOf(b.milestone) || b.updatedAt.getTime() - a.updatedAt.getTime());
+  const thumbs = await lineThumbnails(db, ctx.orgId, lcs.map((l) => l.id));
+  const rows = lcs.map((lc) => listRow(lc, thumbs.get(lc.id) ?? null));
   const counts = { active: 0, waiting: 0, delivered: 0, drafts: 0 };
   for (const r of rows) {
     counts[r.isDraft ? "drafts" : r.isClosed || r.milestone === "delivered" ? "delivered" : "active"]++;

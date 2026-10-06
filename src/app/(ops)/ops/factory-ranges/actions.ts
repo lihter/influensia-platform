@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authorize, OPS_ROLES } from "@/server/shared/authorize";
 import { toActionError, type ActionResult } from "@/server/shared/http";
 import { UNITS } from "@/server/ops/participations";
-import { createRange, uploadRangePdf, addRangeItem, updateRangeItem, removeRangeItem, uploadRangeItemImage, checkRange, publishRange, unpublishRange, type RangeLeakReport } from "@/server/ops/ranges";
+import { createRange, uploadRangePdf, addRangeItem, updateRangeItem, removeRangeItem, uploadRangeItemImage, checkRange, publishRange, unpublishRange, setRangeDisplayName, type RangeLeakReport } from "@/server/ops/ranges";
 
 const ItemSchema = z.object({
   name: z.string().trim().min(2, "Name is required").max(200),
@@ -141,6 +141,18 @@ export async function unpublishRangeAction(raw: { rangeId: string; rangeRef: str
     revalidatePath(`/ops/factory-ranges/${rangeRef}`);
     revalidatePath("/app/catalog");
     return { ok: true, data: r };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
+
+export async function setRangeDisplayNameAction(raw: { rangeId: string; rangeRef: string; displayName: string }): Promise<ActionResult<undefined>> {
+  try {
+    const ctx = await authorize({ roles: OPS_ROLES });
+    const i = z.object({ rangeId: z.uuid(), rangeRef: z.string(), displayName: z.string().trim().max(80, "Keep it under 80 characters") }).parse(raw);
+    await setRangeDisplayName(ctx, i.rangeId, i.displayName || null);
+    revalidatePath(`/ops/factory-ranges/${i.rangeRef}`);
+    return { ok: true, data: undefined };
   } catch (e) {
     return toActionError(e);
   }

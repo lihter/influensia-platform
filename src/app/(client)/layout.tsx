@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentCtx, isClient, isOps } from "@/server/shared/authorize";
 import { AppShell } from "@/components/app/app-shell";
+import { companyLabel } from "@/server/client/portal";
 
 export const dynamic = "force-dynamic";
 
@@ -10,5 +11,5 @@ export default async function ClientLayout({ children }: { children: React.React
   if (!ctx) redirect("/login?next=%2Fapp");
   if (isOps(ctx)) redirect("/ops");
   if (!isClient(ctx)) redirect("/login");
-  return <AppShell user={{ name: ctx.name, email: ctx.email }}>{children}</AppShell>;
+  return <AppShell user={{ name: ctx.name, email: ctx.email }} companyLabel={await companyLabel(ctx.orgId).catch(() => "")}>{children}</AppShell>;
 }

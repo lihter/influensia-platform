@@ -7,7 +7,7 @@
  * participation row lives in the supplier schema, which this module may not import (ESLint boundary), so it is created
  * by the shared `createRangeRequest` helper, which returns nothing supplier-shaped.
  */
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { defaultAgentFor } from "@/server/shared/default-agent";
 import { createRangeRequest } from "@/server/shared/range-request";
 import { clientDownloadUrl } from "./documents";
@@ -65,7 +65,7 @@ function itemImage(f: FileRow | undefined | null, itemId: string) {
 export async function listRanges(ctx: Ctx): Promise<ClientRangeSummaryDto[]> {
   if (!isClient(ctx)) throw new Forbidden("clients only");
   const db = await getDb();
-  const rows = await db.select().from(factoryRanges).where(and(eq(factoryRanges.orgId, ctx.orgId), isNull(factoryRanges.deletedAt), sql`${factoryRanges.publishedAt} is not null`, sql`${factoryRanges.label} is not null`)).orderBy(factoryRanges.publishedAt);
+  const rows = await db.select().from(factoryRanges).where(and(eq(factoryRanges.orgId, ctx.orgId), isNull(factoryRanges.deletedAt), sql`${factoryRanges.publishedAt} is not null`, sql`${factoryRanges.label} is not null`)).orderBy(desc(factoryRanges.publishedAt));
   if (!rows.length) return [];
   const items = await db.select().from(factoryRangeItems).where(inArray(factoryRangeItems.rangeId, rows.map((r) => r.id))).orderBy(asc(factoryRangeItems.sortOrder));
   const [fileMap, byLabel] = await Promise.all([loadFiles(items.map((i) => i.cleanImageFileId)), linesByLabel(ctx.orgId)]);
@@ -74,7 +74,7 @@ export async function listRanges(ctx: Ctx): Promise<ClientRangeSummaryDto[]> {
     const first = its.find((i) => itemImage(fileMap.get(i.cleanImageFileId ?? ""), i.id));
     const l = byLabel.get(labelOf(r.label!));
     return ClientRangeSummaryDto.parse({
-      id: r.id, factoryLabel: labelOf(r.label!), href: `/app/ranges/${r.id}`, itemCount: its.length,
+      id: r.id, factoryLabel: labelOf(r.label!), displayName: r.displayName, href: `/app/ranges/${r.id}`, itemCount: its.length,
       yourProducts: [...(l?.names ?? [])], orderRefs: [...(l?.orderRefs ?? [])], publishedAt: r.publishedAt!.toISOString(),
       image: first ? itemImage(fileMap.get(first.cleanImageFileId ?? ""), first.id) : null,
       preview: its.slice(0, 4).map((i) => ({ name: i.name, price: i.priceMinorE2 != null ? { minorE2: i.priceMinorE2, currency: i.currency, unit: i.unit } : null })),
@@ -114,7 +114,7 @@ export async function getRange(ctx: Ctx, id: string): Promise<ClientRangeDto> {
   const pdf = clientKey(fileMap.get(r.pdfFileId ?? ""));
   const l = byLabel.get(labelOf(r.label));
   return ClientRangeDto.parse({
-    id: r.id, factoryLabel: labelOf(r.label), yourProducts: [...(l?.names ?? [])], orderRefs: [...(l?.orderRefs ?? [])], publishedAt: r.publishedAt.toISOString(),
+    id: r.id, factoryLabel: labelOf(r.label), displayName: r.displayName, yourProducts: [...(l?.names ?? [])], orderRefs: [...(l?.orderRefs ?? [])], publishedAt: r.publishedAt.toISOString(),
     pdf: pdf ? ClientRangePdfDto.parse({ filename: `Factory-${labelOf(r.label)}-range.pdf`, bytes: pdf.bytes, downloadUrl: clientDownloadUrl(pdf.storageKey, `Factory-${labelOf(r.label)}-range.pdf`) }) : null,
     items: items.map((i) => ({
       id: i.id, name: i.name, image: itemImage(fileMap.get(i.cleanImageFileId ?? ""), i.id), moq: i.moq, moqLabel: i.moq != null ? `MOQ ${formatQty(i.moq)}` : null, unit: i.unit,

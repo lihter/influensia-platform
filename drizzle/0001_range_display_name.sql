@@ -1,0 +1,1 @@
+ALTER TABLE "app"."factory_ranges" ADD COLUMN "display_name" text;

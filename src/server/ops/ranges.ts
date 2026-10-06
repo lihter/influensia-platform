@@ -52,7 +52,7 @@ const unescapePdf = (s: string) => s.replace(/\\([nrtbf()\\]|\d{1,3})/g, (_, c: 
 export type RangeRow = { id: string; ref: string; label: string | null; supplierRef: string; supplierName: string; orgId: string; orgName: string; itemCount: number; hasPdf: boolean; publishedAt: string | null; createdAt: string; updatedAt: string; leakOk: boolean | null };
 export type RangeItem = { id: string; name: string; productId: string | null; productRef: string | null; imageUrl: string | null; imageFilename: string | null; moq: number | null; priceMinorE2: number | null; currency: string; unit: string; madeHere: boolean | null; note: string | null; sortOrder: number };
 export type RangeDetail = {
-  id: string; ref: string; label: string | null; supplierId: string; supplierRef: string; supplierName: string; supplierCity: string | null; orgId: string; orgName: string;
+  id: string; ref: string; label: string | null; displayName: string | null; supplierId: string; supplierRef: string; supplierName: string; supplierCity: string | null; orgId: string; orgName: string;
   pdfSource: { fileId: string; filename: string; bytes: number; url: string } | null;
   pdfClient: { fileId: string; filename: string; bytes: number; url: string } | null;
   items: RangeItem[];
@@ -92,7 +92,7 @@ export async function getRange(ctx: Ctx, ref: string): Promise<RangeDetail> {
   const names = await userNames(db, [r.approvedBy, r.createdBy].filter((x): x is string => !!x));
   const lines = await db.select({ lineRef: requestLines.lineRef, name: requestLines.name, state: requestLines.state, createdAt: requestLines.createdAt }).from(requestLines).where(and(eq(requestLines.fromRangeId, r.id), isNull(requestLines.deletedAt))).orderBy(desc(requestLines.createdAt));
   return {
-    id: r.id, ref: r.ref, label: r.label, supplierId: s.id, supplierRef: s.ref, supplierName: s.legalName, supplierCity: s.city, orgId: r.orgId, orgName,
+    id: r.id, ref: r.ref, label: r.label, displayName: r.displayName, supplierId: s.id, supplierRef: s.ref, supplierName: s.legalName, supplierCity: s.city, orgId: r.orgId, orgName,
     pdfSource: fileOf(r.pdfSourceFileId), pdfClient: fileOf(r.pdfFileId),
     items: items.map(({ i, productRef }) => { const img = fileOf(i.cleanImageFileId); return { id: i.id, name: i.name, productId: i.productId, productRef, imageUrl: img?.url ?? null, imageFilename: img?.filename ?? null, moq: i.moq, priceMinorE2: i.priceMinorE2, currency: i.currency, unit: i.unit, madeHere: i.madeHere, note: i.note, sortOrder: i.sortOrder }; }),
     publishedAt: r.publishedAt?.toISOString() ?? null, approvedByName: r.approvedBy ? names[r.approvedBy] ?? null : null, leakCheckResult: r.leakCheckResult, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), createdByName: r.createdBy ? names[r.createdBy] ?? null : null,
@@ -225,12 +225,32 @@ async function runLeakCheck(db: DbOrTx, rangeId: string): Promise<RangeLeakRepor
   let pdfText = "";
   const pdf = r.pdfSourceFileId ? fBy.get(r.pdfSourceFileId) : null;
   if (pdf) pdfText = extractPdfText(await readObject(pdf.storageKey));
-  const fields: Record<string, string | null> = {};
+  const fields: Record<string, string | null> = { "catalogue name": r.displayName };
   for (const [i, it] of items.entries()) { fields[`item ${i + 1} name`] = it.name; fields[`item ${i + 1} note`] = it.note; }
   const filenames = fRows.map((f) => f.originalName);
   const sources = await loadLeakSources(db, { fresh: true });
   const res = leakCheck({ fields, filenames, pdfText }, sources);
   return { ok: res.ok, hits: res.ok ? [] : res.hits, checked: { items: items.length, filenames: filenames.length, pdfChars: pdfText.length } };
+}
+
+/**
+ * Client-facing catalogue name ("Oil filters"). Leak-checked on save — a published range shows it immediately — and
+ * again on every publish. Empty → the client sees "Factory F-nnnn" only.
+ */
+export async function setRangeDisplayName(ctx: Ctx, rangeId: string, name: string | null): Promise<void> {
+  if (!isOps(ctx)) throw new Forbidden("ops only");
+  const db = await getDb();
+  const { r } = await loadRange(db, { id: rangeId });
+  const clean = name?.trim().replace(/\s+/g, " ") || null;
+  if (clean) {
+    const res = leakCheck({ fields: { "catalogue name": clean }, filenames: [], pdfText: "" }, await loadLeakSources(db, { fresh: true }));
+    if (!res.ok) throw new LeakCheckError(res.hits);
+  }
+  const at = now();
+  await db.transaction(async (tx) => {
+    await tx.update(factoryRanges).set({ displayName: clean, updatedAt: at, ...(r.publishedAt ? {} : { leakCheckResult: null }) }).where(eq(factoryRanges.id, r.id));
+    await logActivity(tx, { orgId: r.orgId, entityType: "factory_range", entityId: r.id, type: "range_renamed", actorId: ctx.userId, actorName: ctx.name, visibility: "internal", at, payload: { ref: r.ref, displayName: clean } });
+  });
 }
 
 /**

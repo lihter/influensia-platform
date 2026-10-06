@@ -15,3 +15,4 @@ export * from "./documents";
 export * from "./catalog";
 export * from "./ranges";
 export * from "./settings";
+export * from "./portal";

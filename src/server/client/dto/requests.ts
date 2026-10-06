@@ -2,6 +2,7 @@
  * Client DTOs for the intake + list feature (SPEC F-04 / F-05 / F-06). Strict, denylist-tested like every other client shape.
  */
 import { z } from "zod";
+import { ClientProductImageDto } from "./product";
 import { MilestoneDto, LineStateDto, ExceptionDto, SourcingProgressDto, WaitingReasonDto, isoDateTime } from "./common";
 import { ClientRequestDto } from "./request";
 import { ClientDocumentDto } from "./document";
@@ -34,6 +35,9 @@ export const ClientListRowDto = z.object({
   waitingReason: WaitingReasonDto.nullable(),
   sourcingProgress: SourcingProgressDto,
   etaLabel: z.string().nullable(),
+  /** product picture for the table (thumbnails.ts); null → placeholder with the link domain */
+  image: ClientProductImageDto.nullable().default(null),
+  linkDomain: z.string().nullable().default(null),
   isRepeat: z.boolean(),
   isDraft: z.boolean(),
   isClosed: z.boolean(),           // cancelled → "Closed" sub-heading of Delivered

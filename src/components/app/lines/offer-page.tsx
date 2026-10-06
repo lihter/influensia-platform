@@ -159,7 +159,7 @@ export function ClientOfferPage({ offer, versions, actions }: { offer: ClientOff
     <div className="max-lg:pb-40" data-testid="client-offer" data-status={offer.status}>
       <PageHeader
         band
-        crumbs={[{ href: "/app/requests", label: "Requests & orders" }, { href: `/app/lines/${offer.lineRef}`, label: <span className="font-mono">{offer.lineRef}</span> }, { label: `Offer v${offer.version}` }]}
+        crumbs={[{ href: "/app/requests", label: "Requests" }, { href: `/app/lines/${offer.lineRef}`, label: <span className="font-mono">{offer.lineRef}</span> }, { label: `Offer v${offer.version}` }]}
         title={C.offer.title(offer.lineName)}
         meta={<>
           {offer.canDecide && offer.validUntil ? (

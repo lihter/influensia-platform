@@ -263,6 +263,7 @@ export const factoryRanges = app.table("factory_ranges", {
   orgId: uuid("org_id").notNull().references(() => organizations.id), // the client it is shown to
   supplierId: uuid("supplier_id").$type<ServerOnly<string>>().notNull(),
   label: text("label"), // "F-0042", assigned at first publish, never changed
+  displayName: text("display_name"), // client-facing catalogue name ("Oil filters"); leak-checked on publish
   pdfSourceFileId: uuid("pdf_source_file_id"),
   pdfFileId: uuid("pdf_file_id"),
   approvedBy: text("approved_by"),

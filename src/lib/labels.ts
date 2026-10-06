@@ -95,7 +95,7 @@ export const LABELS = {
     pricing_rule_saved: "Pricing rule saved", profile_updated: "Profile updated", supplier_created: "Supplier created",
     supplier_updated: "Supplier updated", contact_added: "Contact added", product_updated: "Product updated",
     product_unpublished: "Product unpublished", image_approved_clean: "Image approved as clean", range_created: "Range created",
-    range_item_added: "Range item added", range_unpublished: "Range unpublished", product_created: "Product created",
+    range_item_added: "Range item added", range_unpublished: "Range unpublished", range_renamed: "Catalogue renamed", product_created: "Product created",
     product_image_added: "Product image added", product_image_removed: "Product image removed", supplier_deleted: "Supplier deleted",
     contact_updated: "Contact updated", contact_removed: "Contact removed", range_item_updated: "Range item updated",
     range_item_removed: "Range item removed",

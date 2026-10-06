@@ -10,6 +10,8 @@ import { loadLineContexts, type LineContext } from "@/server/shared/line-context
 import { milestoneStep, isActionMilestone, MILESTONES } from "@/server/shared/state-machine";
 import { subLabelFor, exceptionClientText, eventText, isFeedEvent, clientMilestoneLabel } from "@/server/shared/labels";
 import { offerOutcomeOf } from "./line-extras";
+import { lineThumbnails, linkDomain } from "./thumbnails";
+import type { ClientProductImageDto } from "./dto/product";
 import { formatDate } from "@/server/shared/dates";
 import { collapseClientUpdates } from "@/server/shared/timeline";
 import { ClientDashboardDto, ClientWaitingItemDto, ClientActiveLineDto, ClientUpdateDto, type WaitingReasonDto } from "./dto";
@@ -60,14 +62,14 @@ export function waitingItems(lcs: LineContext[]): ClientWaitingItemDto[] {
   return items.sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || a.since.localeCompare(b.since));
 }
 
-export function activeLine(lc: LineContext): ClientActiveLineDto {
+export function activeLine(lc: LineContext, image: ClientProductImageDto | null = null): ClientActiveLineDto {
   return ClientActiveLineDto.parse({
     id: lc.id, ref: lc.ref, href: lc.order ? `/app/orders/${lc.order.ref}` : `/app/lines/${lc.ref}`, name: lc.name, qty: lc.qty, unit: lc.unit,
     milestone: lc.milestone, milestoneStep: milestoneStep(lc.milestone),
     subLabel: subLabelFor(lc.state, { agentName: lc.agentName, reached: lc.sourcing.reached, priced: lc.sourcing.priced, isRepeat: lc.isRepeat, offerStatus: lc.offer?.status }),
     milestoneLabel: clientMilestoneLabel(lc.state, lc.milestone), offerOutcome: offerOutcomeOf(lc),
     exception: lc.exception, exceptionText: exceptionClientText(lc.exception), waitingReason: clientWaitingReason(lc),
-    sourcingProgress: lc.sourcing, etaLabel: etaLabelFor(lc), orderRef: lc.order?.ref ?? null, isRepeat: lc.isRepeat, updatedAt: lc.updatedAt.toISOString(), state: lc.state, lastChangeAt: lc.lastStateChangeAt.toISOString(),
+    sourcingProgress: lc.sourcing, etaLabel: etaLabelFor(lc), orderRef: lc.order?.ref ?? null, isRepeat: lc.isRepeat, image, linkDomain: linkDomain(lc.links), updatedAt: lc.updatedAt.toISOString(), state: lc.state, lastChangeAt: lc.lastStateChangeAt.toISOString(),
   });
 }
 
@@ -91,12 +93,13 @@ export async function getClientDashboard(ctx: Ctx): Promise<ClientDashboardDto> 
     ...eRows.filter((e) => isFeedEvent(e.type, e.payload)).map((e) => ClientUpdateDto.parse({ id: e.id, kind: "event", at: e.createdAt.toISOString(), text: eventText(e.type, e.payload), authorName: e.actorName, byYou: !!e.actorId && orgUserIds.has(e.actorId), isActionMilestone: typeof e.payload.milestone === "string" && isActionMilestone(e.payload.milestone as never) && e.payload.milestoneChanged === true, attachments: [] })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   const recentCollapsed = collapseClientUpdates(recent).slice(0, 5);
+  const thumbs = await lineThumbnails(db, ctx.orgId, active.map((l) => l.id));
 
   return ClientDashboardDto.parse({
     companyLabel: org?.name ?? "",
     userName: me?.name ?? ctx.name,
     waiting: waitingItems(lcs),
-    active: active.map(activeLine),
+    active: active.map((lc) => activeLine(lc, thumbs.get(lc.id) ?? null)),
     deliveredCount,
     recentUpdates: recentCollapsed,
   });

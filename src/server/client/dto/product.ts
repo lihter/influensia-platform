@@ -4,6 +4,7 @@ import { ClientPreviousOrderDto } from "./order";
 
 /** Only `product_images.kind = clean` rows are ever mapped here. */
 export const ClientProductImageDto = z.object({ id: z.uuid(), url: z.string() }).strict();
+export type ClientProductImageDto = z.infer<typeof ClientProductImageDto>;
 
 /** Catalog card (D-16). Reference price is always all-in. `owner_org_id` never appears. */
 export const ClientCatalogDto = z.object({

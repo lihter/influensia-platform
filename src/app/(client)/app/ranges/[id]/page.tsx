@@ -29,10 +29,10 @@ export default async function RangePage({ params }: { params: Promise<{ id: stri
     <>
       <PageHeader
         band
-        crumbs={r.orderRefs.length === 1 ? [{ href: "/app/requests", label: "Requests & orders" }, { href: `/app/orders/${r.orderRefs[0]}`, label: <span className="font-mono">{r.orderRefs[0]}</span> }, { label: "More from this factory" }] : [{ href: "/app/catalog", label: "Catalog" }, { label: "More from this factory" }]}
-        title="More from this factory"
+        crumbs={r.orderRefs.length === 1 ? [{ href: "/app/requests", label: "Requests" }, { href: `/app/orders/${r.orderRefs[0]}`, label: <span className="font-mono">{r.orderRefs[0]}</span> }, { label: "More from this factory" }] : [{ href: "/app/catalogues", label: "Catalogues" }, { label: r.displayName ?? "Catalogue" }]}
+        title={r.displayName ?? "More from this factory"}
         meta={<><FactoryLabel label={r.factoryLabel} /><span>— {making}</span>{r.orderRefs.length > 0 && <span className="font-mono text-xs">{r.orderRefs.map((o) => <Link key={o} href={`/app/orders/${o}`} className="link mr-2">{o}</Link>)}</span>}<span className="text-xs text-muted-foreground">published {fmtDate(r.publishedAt)}</span></>}
-        actions={r.pdf ? <Button asChild variant="outline"><a href={r.pdf.downloadUrl} data-testid="range-pdf"><Download data-icon="inline-start" />Range PDF{r.pdf.bytes >= 10 * 1024 && <span className="font-mono text-xs text-muted-foreground">{formatBytes(r.pdf.bytes)}</span>}</a></Button> : undefined}
+        actions={r.pdf ? <Button asChild variant="outline"><a href={r.pdf.downloadUrl} data-testid="range-pdf"><Download data-icon="inline-start" />Full catalogue PDF{r.pdf.bytes >= 10 * 1024 && <span className="font-mono text-xs text-muted-foreground">{formatBytes(r.pdf.bytes)}</span>}</a></Button> : undefined}
       />
       <PageBand tone="page" pad="lg">
         <p className="mb-4 text-sm text-ink-2">Tick the items you want — a quantity box appears, prefilled with the minimum. Prices are indicative: we confirm them with the factory and send you an offer, without a new sourcing round.</p>

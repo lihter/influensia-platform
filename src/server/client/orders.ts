@@ -25,6 +25,7 @@ import { formatDate } from "@/server/shared/dates";
 import { now } from "@/server/shared/clock";
 import { clientWaitingReason, etaLabelFor } from "./dashboard";
 import { collapseClientUpdates, collapseClientHistory } from "@/server/shared/timeline";
+import { lineThumbnails } from "./thumbnails";
 import { clientDocumentsFor, clientDocumentById, clientDocumentByFileId } from "./documents";
 import { ClientOrderDto, ClientPaymentDto, ClientArtworkDto, ClientInspectionDto, ClientShipmentDto, ClientOrderLineDto, ClientPreviousOrderDto, ClientUpdateDto, ClientEventDto } from "./dto";
 import { ClientOrderPageDto, ClientReorderResultDto } from "./dto/orders";
@@ -62,8 +63,9 @@ export async function loadClientOrderPage(db: DbOrTx, orgId: string, ref: string
   ]);
   const orgUserIds = new Set(orgUsers.map((u) => u.id));
 
+  const thumbs = await lineThumbnails(db, orgId, lineIds);
   const lines = olRows.map(({ ol, line }) => ClientOrderLineDto.parse({
-    id: ol.id, lineRef: line.lineRef, name: line.name, qty: ol.qty, unit: ol.unit, unitPrice: { minorE2: ol.unitPriceMinorE2, currency: o.currency, unit: ol.unit },
+    id: ol.id, lineRef: line.lineRef, name: line.name, image: thumbs.get(line.id) ?? null, qty: ol.qty, unit: ol.unit, unitPrice: { minorE2: ol.unitPriceMinorE2, currency: o.currency, unit: ol.unit },
     fee: o.pricingDisplay === "factory_plus_fee" ? { minor: ol.feeMinor, currency: o.currency } : null, specVersion: ol.specVersion, artworkRequired: ol.artworkRequired, clientSku: line.clientSku,
   }));
   const KIND_RANK: Record<string, number> = { deposit: 0, fee: 1, balance: 2, sample: 3 }; // QA-49: stable Deposit, Fee, Balance

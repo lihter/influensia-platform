@@ -95,7 +95,7 @@ async function crawl(page: Page, start: string[], max = 160) {
   return { visited, assets: [...assets], failures, unvisited: queue.length };
 }
 
-const NAV = ["/app", "/app/requests", "/app/requests?tab=waiting", "/app/requests?tab=delivered", "/app/requests?tab=drafts", "/app/catalog", "/app/settings"];
+const NAV = ["/app", "/app/products", "/app/orders", "/app/catalogues", "/app/requests", "/app/requests?tab=waiting", "/app/requests?tab=delivered", "/app/requests?tab=drafts", "/app/catalog", "/app/settings"];
 /** Every seeded line of the org (SPEC 5.4 "instantiated for every seeded entity") — ordered lines link to their order, not the line page. */
 const SEEDED: Record<string, string[]> = {
   "piotr@example.pl": ["01", "02", "03", "05", "11", "14", "20", "26"].map((n) => `/app/lines/REQ-2026-0312-${n}`),

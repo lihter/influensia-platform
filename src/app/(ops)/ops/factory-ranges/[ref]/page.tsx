@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireOpsPage, isAdmin, NotFound } from "@/server/shared/authorize";
 import { getRange, productOptions } from "@/server/ops/ranges";
 import { RangePage } from "@/components/ops/products/range-page";
-import { uploadRangePdfAction, addRangeItemAction, updateRangeItemAction, removeRangeItemAction, uploadRangeItemImageAction, checkRangeAction, publishRangeAction, unpublishRangeAction } from "../actions";
+import { uploadRangePdfAction, addRangeItemAction, updateRangeItemAction, removeRangeItemAction, uploadRangeItemImageAction, checkRangeAction, publishRangeAction, unpublishRangeAction, setRangeDisplayNameAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ export default async function RangeDetailPage({ params }: { params: Promise<{ re
       r={r}
       isAdmin={isAdmin(ctx)}
       products={products}
-      actions={{ uploadPdf: uploadRangePdfAction, addItem: addRangeItemAction, updateItem: updateRangeItemAction, removeItem: removeRangeItemAction, uploadItemImage: uploadRangeItemImageAction, check: checkRangeAction, publish: publishRangeAction, unpublish: unpublishRangeAction }}
+      actions={{ uploadPdf: uploadRangePdfAction, addItem: addRangeItemAction, updateItem: updateRangeItemAction, removeItem: removeRangeItemAction, uploadItemImage: uploadRangeItemImageAction, check: checkRangeAction, publish: publishRangeAction, unpublish: unpublishRangeAction, rename: setRangeDisplayNameAction }}
     />
   );
 }

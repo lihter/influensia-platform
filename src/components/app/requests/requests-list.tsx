@@ -1,8 +1,7 @@
 "use client";
 import * as React from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
-import { ArrowRight, Search, Triangle, FileText, Inbox } from "lucide-react";
+import { Search, Triangle, FileText, Inbox } from "lucide-react";
 import type { ClientRequestListDto, ClientListRowDto, ClientListTabDto } from "@/server/client/dto/requests";
 import { MILESTONES } from "@/db/enums";
 import { MilestoneChip, ExceptionChip, UtilityBadge } from "@/components/shared/chips";
@@ -15,6 +14,8 @@ import { NextShort } from "../now-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { DataTable, type DataTableColumn } from "@/components/shared/data-table";
+import { ProductThumb } from "../product-thumb";
 import { S } from "./strings";
 
 const T = S.list;
@@ -28,19 +29,43 @@ function inTab(r: ClientListRowDto, tab: ClientListTabDto) {
 }
 
 /**
- * F-05 — Requests & orders: tabs Active · Waiting on you · Delivered · Drafts, search by ref/name, rows sectioned by
- * milestone (sheet lists with numbered eyebrow headers, like the dashboard). Row → line page / order page / draft request.
+ * F-05 — Requests: tabs Active · Waiting on you · Delivered · Drafts, search by ref/name, one table (picture first,
+ * sorted by milestone). Row → line page / order page / draft request.
  */
 export function RequestsList({ dto, tab }: { dto: ClientRequestListDto; tab: ClientListTabDto }) {
-  const tm = useTranslations("milestone");
   const [q, setQ] = React.useState("");
   const needle = q.trim().toLowerCase();
   const rows = dto.rows.filter((r) => inTab(r, tab)).filter((r) => !needle || r.name.toLowerCase().includes(needle) || r.ref.toLowerCase().includes(needle) || (r.orderRef ?? "").toLowerCase().includes(needle) || r.requestRef.toLowerCase().includes(needle));
-  const groups = tab === "delivered"
-    ? [{ key: "delivered", label: tm("delivered"), number: 9, rows: rows.filter((r) => !r.isClosed) }, { key: "closed", label: T.closed, number: undefined, rows: rows.filter((r) => r.isClosed) }].filter((g) => g.rows.length)
-    : tab === "drafts"
-      ? [{ key: "drafts", label: T.tabs.drafts, number: undefined, rows }]
-      : MILESTONES.map((m) => ({ key: m, label: tm(m), number: MILESTONES.indexOf(m) + 1, rows: rows.filter((r) => r.milestone === m) })).filter((g) => g.rows.length);
+  const columns: DataTableColumn<ClientListRowDto>[] = [
+    {
+      id: "product", header: "Product", accessorFn: (r) => r.name,
+      cell: ({ row: { original: r } }) => (
+        <div className="flex items-center gap-4 py-1.5">
+          <ProductThumb image={r.image} name={r.name} domain={r.linkDomain} size="lg" />
+          <div className="min-w-0 max-w-[40ch]">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <Ref muted>{r.displayRef}</Ref>
+              {!r.orderRef && !r.isDraft && <Link href={`/app/requests/${r.requestRef}`} onClick={(e) => e.stopPropagation()} className="relative z-10 font-mono text-xs text-muted-foreground underline-offset-[3px] hover:text-foreground hover:underline" data-testid="request-link">{r.requestRef} ›</Link>}
+              {r.isRepeat && <UtilityBadge kind="repeat">Repeat</UtilityBadge>}
+            </div>
+            <Link href={r.href} onClick={(e) => e.stopPropagation()} className="block truncate text-[15px] font-medium leading-5 text-foreground hover:underline" title={r.name}>{r.name}</Link>
+            <div className="truncate text-xs text-ink-2" title={r.exceptionText ?? r.subLabel} data-testid="status-detail">{r.exceptionText ?? r.subLabel}</div>
+          </div>
+        </div>
+      ),
+      meta: { sticky: true },
+    },
+    { id: "qty", header: "Qty", accessorFn: (r) => r.qty ?? -1, cell: ({ row: { original: r } }) => (r.qty !== null ? <Qty qty={r.qty} unit={unitLabel(r.unit, r.qty)} /> : <span className="text-muted-foreground">—</span>), meta: { numeric: true } },
+    { id: "status", header: "Status", accessorFn: (r) => MILESTONES.indexOf(r.milestone), cell: ({ row: { original: r } }) => (r.exception ? <ExceptionChip exception={r.exception} client /> : <MilestoneChip milestone={r.milestone} waitingOnClient={!!r.waitingReason} label={chipLabel(r)} />) },
+    {
+      id: "next", header: "Next", enableSorting: false,
+      cell: ({ row: { original: r } }) => {
+        const step = nextStepFor({ milestone: r.milestone, state: r.state, waitingReason: r.waitingReason, exception: r.exception, offerOutcome: r.offerOutcome, sourcing: r.sourcingProgress, since: r.lastChangeAt, isRepeat: r.isRepeat, etaLabel: r.etaLabel });
+        return step.short && !r.isDraft ? <NextShort step={step} className="font-mono" /> : <span className="font-mono text-xs text-muted-foreground">{r.isDraft ? "Draft" : "—"}</span>;
+      },
+    },
+    { id: "updated", header: "Updated", accessorFn: (r) => r.updatedAt, cell: ({ row: { original: r } }) => <span className="font-mono text-xs text-muted-foreground">{fmtDateShort(r.updatedAt)}</span>, meta: { numeric: true } },
+  ];
 
   return (
     <div className="flex flex-col gap-5" data-testid="requests-list">
@@ -67,42 +92,7 @@ export function RequestsList({ dto, tab }: { dto: ClientRequestListDto; tab: Cli
             : <EmptyState icon={tab === "drafts" ? FileText : Inbox} title={T.empty[tab]} body={T.emptyHint[tab]} action={tab === "active" || tab === "drafts" ? <Button asChild><Link href="/app/requests/new">{T.newRequest}</Link></Button> : undefined} />}
         </div>
       ) : (
-        <div className="flex flex-col gap-5">
-          {groups.map((g) => (
-            <section key={g.key} data-list-group={g.key} aria-label={g.label}>
-              <div className="mb-1.5 flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                {g.label} <span className="font-mono font-medium">{g.rows.length}</span>
-              </div>
-              <ul className="sheet">
-                {g.rows.map((r) => {
-                  const step = nextStepFor({ milestone: r.milestone, state: r.state, waitingReason: r.waitingReason, exception: r.exception, offerOutcome: r.offerOutcome, sourcing: r.sourcingProgress, since: r.lastChangeAt, isRepeat: r.isRepeat, etaLabel: r.etaLabel });
-                  return (
-                    <li key={r.id} className="sheet-row relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 transition-colors duration-[120ms] hover:bg-surface-sunken md:grid-cols-[minmax(0,1fr)_7.5rem_10rem_10.5rem_1rem]" data-testid="list-row" data-ref={r.ref}>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <Ref muted>{r.displayRef}</Ref>
-                          {!r.orderRef && !r.isDraft && <Link href={`/app/requests/${r.requestRef}`} className="relative z-10 font-mono text-xs text-muted-foreground underline-offset-[3px] hover:text-foreground hover:underline" data-testid="request-link">{r.requestRef} ›</Link>}
-                          {r.isRepeat && <UtilityBadge kind="repeat">Repeat</UtilityBadge>}
-                        </div>
-                        <Link href={r.href} className="block truncate text-sm font-medium text-foreground after:absolute after:inset-0 after:content-['']" title={r.name}>{r.name}</Link>
-                        <div className="truncate text-xs text-ink-2" title={r.exceptionText ?? r.subLabel} data-testid="status-detail">{r.exceptionText ?? r.subLabel}</div>
-                      </div>
-                      <div className="hidden text-right md:block">{r.qty !== null ? <Qty qty={r.qty} unit={unitLabel(r.unit, r.qty)} className="text-[13px] text-ink-2" /> : null}</div>
-                      <div className="flex justify-end md:justify-start">
-                        {r.exception ? <ExceptionChip exception={r.exception} client /> : <MilestoneChip milestone={r.milestone} waitingOnClient={!!r.waitingReason} label={chipLabel(r)} />}
-                      </div>
-                      <div className="col-span-2 flex items-center justify-between gap-3 md:col-span-1 md:justify-end">
-                        <span className="text-xs text-ink-2 md:hidden">{r.qty !== null && <Qty qty={r.qty} unit={unitLabel(r.unit, r.qty)} />}</span>
-                        {step.short && !r.isDraft ? <NextShort step={step} className="font-mono" /> : <span className="font-mono text-xs text-muted-foreground">{r.isDraft ? "Draft" : `Updated ${fmtDateShort(r.updatedAt)}`}</span>}
-                      </div>
-                      <ArrowRight className="hidden size-4 text-faint md:block" aria-hidden />
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          ))}
-        </div>
+        <DataTable columns={columns} data={rows} rowHref={(r) => r.href} rowProps={(r) => ({ "data-testid": "list-row", "data-ref": r.ref, "data-list-group": r.milestone })} data-testid="requests-table" />
       )}
     </div>
   );

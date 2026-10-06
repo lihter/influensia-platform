@@ -19,6 +19,8 @@ export type ClientRangePdfDto = z.infer<typeof ClientRangePdfDto>;
 export const ClientRangeSummaryDto = z.object({
   id: z.uuid(),
   factoryLabel: z.string(),                // "F-0042"
+  /** agent-set catalogue name ("Oil filters"), leak-checked; null → show the label only */
+  displayName: z.string().nullable(),
   href: z.string(),                        // /app/ranges/{id}
   itemCount: z.number().int().nonnegative(),
   /** names of your products this factory is making / has made (order refs, not supplier facts) */
@@ -33,6 +35,7 @@ export type ClientRangeSummaryDto = z.infer<typeof ClientRangeSummaryDto>;
 export const ClientRangeDto = z.object({
   id: z.uuid(),
   factoryLabel: z.string(),
+  displayName: z.string().nullable(),
   yourProducts: z.array(z.string()),
   orderRefs: z.array(z.string()),
   publishedAt: isoDateTime,

@@ -57,6 +57,7 @@ export const ClientOrderLineDto = z.object({
   id: z.uuid(),
   lineRef: z.string(),
   name: z.string(),
+  image: z.object({ id: z.uuid(), url: z.string() }).strict().nullable().default(null),
   qty: z.number().int(),
   unit: z.string(),
   unitPrice: UnitPriceDto,

@@ -15,19 +15,55 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { label } from "@/lib/labels";
 import { PageBand } from "@/components/shared/section-band";
-import { CatalogCard, CatalogImage } from "./catalog-card";
+import { referenceMeta } from "./catalog-card";
+import { DataTable, CellSub, type DataTableColumn } from "@/components/shared/data-table";
+import { UtilityBadge } from "@/components/shared/chips";
+import { ProductThumb } from "../product-thumb";
+import { perUnit } from "../client-format";
 import { RequestOfferForm } from "./request-offer-form";
 
 type Action = (i: { productRef: string; qty: number; note?: string | null }) => Promise<ActionResult<ClientCatalogRequestDto>>;
 
-/** DESIGN §6.5: search in the header slot, category chips + "Ordered before" on a section-alt band, 1/2/3-column grid. */
-export function CatalogGrid({ products, categories, ranges, action }: { products: ClientCatalogDto[]; categories: ClientCatalogCategoryDto[]; ranges: ClientRangeSummaryDto[]; action: Action }) {
+/**
+ * Suggestions from Influensia: search + category chips on a section-alt band, then one table row per product — big
+ * picture first, name, reference price, "Request offer". Rows keep the `catalog-card` hook for the anonymity crawl.
+ */
+export function CatalogGrid({ products, categories, action }: { products: ClientCatalogDto[]; categories: ClientCatalogCategoryDto[]; action: Action }) {
   const [q, setQ] = React.useState("");
   const [cat, setCat] = React.useState<string | null>(null);
   const [orderedOnly, setOrderedOnly] = React.useState(false);
   const n = q.trim().toLowerCase();
   const list = products.filter((p) => (!cat || p.category === cat) && (!orderedOnly || p.orderedBefore) && (!n || `${p.name} ${p.ref} ${p.category ?? ""}`.toLowerCase().includes(n)));
   const chip = (on: boolean) => cn("h-8 rounded-full border px-3 text-sm font-medium transition-colors duration-[120ms]", on ? "border-green-200 bg-green-100 text-green-700" : "border-border bg-card text-ink-2 hover:bg-surface-sunken");
+  const columns = React.useMemo<DataTableColumn<ClientCatalogDto>[]>(() => [
+    {
+      id: "product", header: "Product", accessorFn: (p) => p.name,
+      cell: ({ row: { original: p } }) => (
+        <div className="flex items-center gap-4 py-2">
+          <ProductThumb image={p.image} name={p.name} size="xl" />
+          <div className="min-w-0 max-w-[44ch]">
+            <Link href={`/app/catalog/${p.ref}`} className="block truncate text-[15px] font-medium leading-5 text-foreground hover:underline" title={p.name} onClick={(e) => e.stopPropagation()}>{p.name}</Link>
+            <CellSub>{p.category ? `${label("productCategory", p.category)} · ` : ""}<span className="font-mono">{p.ref}</span></CellSub>
+            {p.orderedBefore && <UtilityBadge kind="repeat" className="mt-1 normal-case tracking-normal">Ordered before</UtilityBadge>}
+          </div>
+        </div>
+      ),
+      meta: { sticky: true },
+    },
+    {
+      id: "price", header: "Reference price", accessorFn: (p) => p.referencePrice?.minorE2 ?? -1,
+      cell: ({ row: { original: p } }) => (
+        <div className="text-right">
+          {p.referencePrice && !p.priceStale
+            ? <UnitPrice minorE2={p.referencePrice.minorE2} currency={p.referencePrice.currency} unit={perUnit(p.unit)} className="text-[15px]" />
+            : <span className="text-sm font-medium text-ink-2" data-testid="price-tbc">price to be confirmed</span>}
+          <CellSub className="text-right">{referenceMeta(p)}</CellSub>
+        </div>
+      ),
+      meta: { numeric: true, strong: true },
+    },
+    { id: "action", header: "", enableSorting: false, cell: ({ row: { original: p } }) => <div onClick={(e) => e.stopPropagation()} className="flex justify-end"><RequestOfferForm p={p} action={action} /></div>, meta: { className: "w-px" } },
+  ], [action]);
 
   return (
     <>
@@ -43,52 +79,51 @@ export function CatalogGrid({ products, categories, ranges, action }: { products
         {products.some((p) => p.orderedBefore) && <button type="button" className={cn(chip(orderedOnly), "sm:ml-auto")} aria-pressed={orderedOnly} onClick={() => setOrderedOnly((x) => !x)}>Ordered before</button>}
       </PageBand>
       <PageBand tone="page" pad="lg">
-
-      {products.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card">
-          <EmptyState icon={PackageSearch} title="Our catalog is being prepared." body="Send a request and we'll source it." action={<Button asChild><Link href="/app/requests/new">New request</Link></Button>} />
-        </div>
-      ) : list.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card"><EmptyState title="No products match" action={<Button variant="outline" onClick={() => { setQ(""); setCat(null); setOrderedOnly(false); }}>Clear filters</Button>} /></div>
-      ) : (
-        <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3" data-testid="catalog-grid">
-          {list.map((p) => (
-            <li key={p.id} className="min-w-0">
-              <CatalogCard p={p} href={`/app/catalog/${p.ref}`} action={<RequestOfferForm p={p} action={action} className="w-full" />} />
-            </li>
-          ))}
-        </ul>
-      )}
-
-      </PageBand>
-      {ranges.length > 0 && (
-        <PageBand tone="alt" pad="lg" aria-labelledby="ranges-h" data-testid="catalog-ranges">
-          <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-            <h2 id="ranges-h" className="text-lg font-semibold">More from your factories</h2>
-            <span className="text-xs text-muted-foreground">Other items the factories making your products can supply — quick quotes, no new sourcing round.</span>
+        {products.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card">
+            <EmptyState icon={PackageSearch} title="Our suggestions are being prepared." body="Send a request and we'll source it." action={<Button asChild><Link href="/app/requests/new">New request</Link></Button>} />
           </div>
-          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            {ranges.map((r) => (
-              <li key={r.id} className="flex overflow-hidden rounded-xl border border-border bg-card" data-testid="range-card" data-label={r.factoryLabel}>
-                <CatalogImage image={r.image} name={`Factory ${r.factoryLabel}`} className="hidden w-32 shrink-0 sm:block aspect-auto" />
-                <div className="flex min-w-0 flex-1 flex-col p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <FactoryLabel label={r.factoryLabel} />
-                    <span className="font-mono text-xs text-muted-foreground">{r.itemCount} items</span>
-                    <span className="ml-auto text-xs text-muted-foreground">published {fmtDateShort(r.publishedAt)}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-ink-2">{r.yourProducts.length ? <>The factory making your <span className="font-medium text-foreground">{r.yourProducts.slice(0, 2).join(", ")}{r.yourProducts.length > 2 ? ` +${r.yourProducts.length - 2}` : ""}</span>{r.orderRefs.length > 0 && <span className="font-mono text-xs text-muted-foreground"> · {r.orderRefs.join(", ")}</span>}</> : "A factory already working for you."}</p>
-                  <ul className="mt-2 flex flex-col gap-0.5 text-xs text-muted-foreground">
-                    {r.preview.slice(0, 3).map((it) => <li key={it.name} className="flex justify-between gap-3"><span className="truncate">{it.name}</span>{it.price && <span className="shrink-0">from <UnitPrice minorE2={it.price.minorE2} currency={it.price.currency} unit={it.price.unit} className="text-xs font-normal text-ink-2" /></span>}</li>)}
-                    {r.itemCount > Math.min(3, r.preview.length) && <li className="text-faint">+{r.itemCount - Math.min(3, r.preview.length)} more</li>}
-                  </ul>
-                  <div className="mt-3"><Button asChild variant="outline" size="sm"><Link href={r.href}>See all {r.itemCount} items</Link></Button></div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </PageBand>
-      )}
+        ) : (
+          <DataTable
+            columns={columns}
+            data={list}
+            rowHref={(p) => `/app/catalog/${p.ref}`}
+            rowProps={(p) => ({ "data-testid": "catalog-card", "data-ref": p.ref })}
+            data-testid="catalog-grid"
+            emptyState={<EmptyState title="No products match" action={<Button variant="outline" onClick={() => { setQ(""); setCat(null); setOrderedOnly(false); }}>Clear filters</Button>} />}
+          />
+        )}
+      </PageBand>
     </>
+  );
+}
+
+/** Catalogues: one row per published range — picture, catalogue name, how many items, what of yours it makes, PDF. */
+export function RangesList({ ranges }: { ranges: ClientRangeSummaryDto[] }) {
+  if (!ranges.length) {
+    return <div className="rounded-xl border border-border bg-card"><EmptyState icon={PackageSearch} title="No catalogues yet" body="When a maker we work with for you has more to offer, its full catalogue appears here — with prices, ready to quote." /></div>;
+  }
+  return (
+    <ul className="flex flex-col gap-3" data-testid="catalog-ranges">
+      {ranges.map((r) => (
+        <li key={r.id} className="relative flex items-center gap-4 rounded-xl border border-border bg-card p-4 transition-colors duration-[120ms] hover:bg-surface-sunken" data-testid="range-card" data-label={r.factoryLabel}>
+          <ProductThumb image={r.image} name={r.displayName ?? r.factoryLabel} size="xl" preview={false} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href={r.href} className="text-base font-semibold text-foreground after:absolute after:inset-0 after:content-['']" data-testid="range-title">{r.displayName ?? `Catalogue ${r.factoryLabel}`}</Link>
+              <FactoryLabel label={r.factoryLabel} />
+            </div>
+            <p className="mt-1 text-sm text-ink-2">
+              <span className="font-mono text-xs text-muted-foreground">{r.itemCount} items · updated {fmtDateShort(r.publishedAt)}</span>
+              {r.yourProducts.length > 0 && <> · makes your <span className="font-medium text-foreground">{r.yourProducts.slice(0, 2).join(", ")}{r.yourProducts.length > 2 ? ` +${r.yourProducts.length - 2}` : ""}</span></>}
+            </p>
+            <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+              {r.preview.slice(0, 4).map((it) => <li key={it.name} className="max-w-[24ch] truncate">{it.name}{it.price && <> · <UnitPrice minorE2={it.price.minorE2} currency={it.price.currency} unit={it.price.unit} className="text-xs font-normal text-ink-2" /></>}</li>)}
+            </ul>
+          </div>
+          <Button asChild variant="outline" size="sm" className="relative z-10 hidden sm:inline-flex"><Link href={r.href}>Open catalogue</Link></Button>
+        </li>
+      ))}
+    </ul>
   );
 }

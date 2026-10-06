@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ClientProductImageDto } from "./product";
 import { MoneyDto, UnitPriceDto, MilestoneDto, LineStateDto, isoDateTime, isoDate } from "./common";
 import { ClientRequestLineDto } from "./request";
 import { ClientTimelineDto } from "./comment";
@@ -46,6 +47,8 @@ export type ClientLineOrderCardDto = z.infer<typeof ClientLineOrderCardDto>;
 export const ClientLinePageDto = z.object({
   companyLabel: z.string(),
   line: ClientRequestLineDto,
+  /** the product picture (thumbnails.ts) — shown first on the page */
+  image: ClientProductImageDto.nullable().default(null),
   waitingReasonDetail: z.string().nullable(),
   openQuestion: z.string().nullable(),
   timeline: ClientTimelineDto,

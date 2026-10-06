@@ -45,7 +45,7 @@ export function ClientSamplePage({ sample: s, approve, reject }: { sample: Clien
     <div className={cn(s.canDecide && "max-lg:pb-32")} data-testid="client-sample" data-status={s.status}>
       <PageHeader
         band
-        crumbs={[{ href: "/app/requests", label: "Requests & orders" }, { href: `/app/lines/${s.lineRef}`, label: <span className="font-mono">{s.lineRef}</span> }, { label: "Sample" }]}
+        crumbs={[{ href: "/app/requests", label: "Requests" }, { href: `/app/lines/${s.lineRef}`, label: <span className="font-mono">{s.lineRef}</span> }, { label: "Sample" }]}
         title={C.sample.title(s.lineName)}
         meta={<>
           <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium", s.status === "approved" ? "border-success-border bg-success-wash text-success" : s.status === "rejected" ? "border-danger-border bg-danger-wash text-danger" : s.canDecide ? "border-green-200 bg-green-100 text-green-700" : "border-neutral-border bg-neutral-wash text-ink-2")} data-testid="sample-status">{STATUS[s.status]}{s.decidedAt && (s.status === "approved" || s.status === "rejected") ? ` · ${fmtDateShort(s.decidedAt)}` : ""}</span>

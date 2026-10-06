@@ -72,8 +72,8 @@ export const S = {
     error: "Something went wrong — please try again.",
   },
   list: {
-    eyebrow: "Requests & orders",
-    title: "Requests & orders",
+    eyebrow: "Requests",
+    title: "Requests",
     search: "Search by name or ref",
     tabs: { active: "Active", waiting: "Waiting on you", delivered: "Delivered", drafts: "Drafts" } as const,
     empty: { active: "No active requests", waiting: "Nothing waiting on you", delivered: "No delivered orders yet", drafts: "No drafts" } as const,

@@ -36,7 +36,9 @@ test("client catalog: 4 products with reference data, factory range section, no 
   await expect(page.locator("[data-testid=catalog-card][data-ref=PRD-0003]")).toContainText("$9.90");
   await expect(page.locator("[data-testid=catalog-card][data-ref=PRD-0004]")).toContainText("$0.062");
   await expect(shelving.locator("img")).toHaveAttribute("src", /\/api\/files\/org\/.+\/product\/.+\/client\//);
-  // D-15 section
+  expect(await page.content()).not.toMatch(FORBIDDEN);
+  // D-15: catalogues live on their own page now
+  await page.goto("/app/catalogues");
   const range = page.locator("[data-testid=range-card][data-label=F-0042]");
   await expect(range).toBeVisible();
   await expect(range).toContainText("Factory F-0042");
@@ -46,8 +48,8 @@ test("client catalog: 4 products with reference data, factory range section, no 
 
 test("client range page: label, 12 items, PDF from a client key; other org gets 404", async ({ page, browser }) => {
   await login(page, "piotr@example.pl");
-  await page.goto("/app/catalog");
-  await page.locator("[data-testid=range-card][data-label=F-0042] a").click();
+  await page.goto("/app/catalogues");
+  await page.locator("[data-testid=range-card][data-label=F-0042] [data-testid=range-title]").click();
   await page.waitForURL(/\/app\/ranges\/[0-9a-f-]{36}$/);
   const url = page.url();
   await expect(page.getByTestId("range-items").getByTestId("range-item")).toHaveCount(12);
@@ -132,8 +134,8 @@ test("ops suppliers, products and ranges (AC-SUP-01/02, AC-PRD-01/02, AC-RNG-01)
 // last: it adds a participation to SUP-0007, which the ops test above counts
 test("range request: Piotr requests an item → line starts in negotiating with the factory pre-selected (createRangeRequest)", async ({ page }) => {
   await login(page, "piotr@example.pl");
-  await page.goto("/app/catalog");
-  await page.locator("[data-testid=range-card][data-label=F-0042] a").click();
+  await page.goto("/app/catalogues");
+  await page.locator("[data-testid=range-card][data-label=F-0042] [data-testid=range-title]").click();
   await page.waitForURL(/\/app\/ranges\//);
   await page.getByLabel("Select Deck box 100+").check();
   await page.getByTestId("request-items").click();

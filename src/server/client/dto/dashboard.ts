@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ClientProductImageDto } from "./product";
 import { MilestoneDto, LineStateDto, ExceptionDto, SourcingProgressDto, WaitingReasonDto, MoneyDto, isoDateTime, isoDate } from "./common";
 import { ClientUpdateDto } from "./comment";
 
@@ -37,6 +38,9 @@ export const ClientActiveLineDto = z.object({
   sourcingProgress: SourcingProgressDto,
   etaLabel: z.string().nullable(),
   orderRef: z.string().nullable(),
+  /** product picture for the table (thumbnails.ts); null → placeholder with the link domain */
+  image: ClientProductImageDto.nullable().default(null),
+  linkDomain: z.string().nullable().default(null),
   isRepeat: z.boolean(),
   updatedAt: isoDateTime,
   /** internal state (raw enum) + last state change, for "what's next and when" */

@@ -119,7 +119,7 @@ export const ACTIVITY_TYPES = [
   "quote_logged", "offer_sent", "offer_decided", "sample_created", "sample_status_changed", "sample_decided", "order_confirmed",
   "payment_recorded", "artwork_submitted", "artwork_decided", "po_updated", "inspection_recorded", "shipment_updated", "eta_changed",
   "document_uploaded", "document_published", "document_unpublished", "leak_check_blocked", "comment_posted", "whatsapp_logged",
-  "product_published", "range_published", "user_invited", "state_overridden", "delivery_confirmed", "reorder_created",
+  "product_published", "range_published", "range_renamed", "user_invited", "state_overridden", "delivery_confirmed", "reorder_created",
   // admin / master-data events (added in the integration pass)
   "org_updated", "user_deactivated", "user_reactivated", "pricing_rule_saved", "profile_updated",
   "supplier_created", "supplier_updated", "contact_added", "product_updated", "product_unpublished", "image_approved_clean",

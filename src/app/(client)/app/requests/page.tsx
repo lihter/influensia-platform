@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { RequestsList } from "@/components/app/requests/requests-list";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Requests & orders" };
+export const metadata = { title: "Requests" };
 
 /** F-05 — Requests & orders list. Tab from `?tab=`; everything else (search) is client-side over the DTO. */
 export default async function RequestsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {

@@ -28,7 +28,7 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
     <>
       <PageHeader
         band
-        crumbs={[{ href: "/app/catalog", label: "Catalog" }, { label: <span className="font-mono">{p.ref}</span> }]}
+        crumbs={[{ href: "/app/catalog", label: "Suggestions" }, { label: <span className="font-mono">{p.ref}</span> }]}
         title={p.name}
         meta={<>{p.category && <span>{label("productCategory", p.category)}</span>}{p.orderedBefore && <UtilityBadge kind="repeat" className="normal-case tracking-normal">Ordered before</UtilityBadge>}</>}
         actions={<div className="lg:hidden"><RequestOfferForm p={p} action={requestOfferAction} size="lg" className="w-full" /></div>}

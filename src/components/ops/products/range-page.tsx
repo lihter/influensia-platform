@@ -38,6 +38,7 @@ type Actions = {
   check: (i: { rangeId: string }) => Promise<ActionResult<RangeLeakReport>>;
   publish: (i: { rangeId: string; rangeRef: string }) => Promise<ActionResult<{ ref: string; label: string }>>;
   unpublish: (i: { rangeId: string; rangeRef: string }) => Promise<ActionResult<{ ref: string }>>;
+  rename: (i: { rangeId: string; rangeRef: string; displayName: string }) => Promise<ActionResult<undefined>>;
 };
 type ProductOpt = { id: string; ref: string; name: string };
 const NONE = "__none__";
@@ -169,6 +170,7 @@ export function RangePage({ r, isAdmin, products, actions }: { r: RangeDetail; i
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Supplier</dt><dd className="text-right"><Link href={`/ops/suppliers/${r.supplierRef}`} className="link">{r.supplierName}</Link></dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Shown to</dt><dd>{r.orgName}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Shown as</dt><dd>{r.label ? <FactoryLabel label={r.label} disclosed={false} /> : <span className="text-muted-foreground">on publish</span>}</dd></div>
+            <CatalogueName r={r} rename={actions.rename} />
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Created</dt><dd className="text-right"><DateTime value={r.createdAt} variant="short" />{r.createdByName && <span className="text-muted-foreground"> · {r.createdByName}</span>}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Updated</dt><dd><DateTime value={r.updatedAt} variant="short" /></dd></div>
           </dl>
@@ -301,3 +303,30 @@ function PublishRangeDialog({ r, open, onOpenChange, check, publish, unpublish }
   );
 }
 
+
+/** Client-facing catalogue name ("Oil filters", "Steel shelving"): what the client sees instead of "Factory F-0042". */
+function CatalogueName({ r, rename }: { r: RangeDetail; rename: Actions["rename"] }) {
+  const router = useRouter();
+  const [value, setValue] = React.useState(r.displayName ?? "");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const dirty = value.trim() !== (r.displayName ?? "");
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setError(null);
+    const res = await rename({ rangeId: r.id, rangeRef: r.ref, displayName: value });
+    setBusy(false);
+    if (res.ok) { toast.success(value.trim() ? "Catalogue name saved" : "Catalogue name removed"); router.refresh(); return; }
+    setError(res.error === "E_LEAK_CHECK" ? "Looks like a supplier identifier — use a product category instead (e.g. “Oil filters”)." : res.errors?.displayName ?? "Could not save");
+  };
+  return (
+    <form onSubmit={save} className="mt-2 flex flex-col gap-1.5 border-t border-hairline pt-3" data-testid="range-display-name">
+      <label htmlFor="range-display-name" className="text-xs font-medium text-ink-2">Catalogue name (client sees this)</label>
+      <div className="flex gap-2">
+        <Input id="range-display-name" value={value} onChange={(e) => setValue(e.target.value)} placeholder="e.g. Oil filters" maxLength={80} className="h-9" aria-invalid={error ? true : undefined} />
+        <Button type="submit" size="sm" variant="outline" className="h-9" disabled={!dirty || busy}>{busy ? <Loader2 className="animate-spin" /> : "Save"}</Button>
+      </div>
+      {error ? <p className="text-xs text-destructive">{error}</p> : <p className="text-xs text-muted-foreground">A product category, never a company or brand name. Leak-checked on save.</p>}
+    </form>
+  );
+}

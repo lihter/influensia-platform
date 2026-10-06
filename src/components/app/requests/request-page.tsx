@@ -65,7 +65,7 @@ export function RequestPage({ dto, justSent, submitDraft, deleteDraft }: { dto: 
     <div data-testid="client-request" data-ref={req.ref}>
       <PageHeader
         band
-        crumbs={[{ href: isDraft ? "/app/requests?tab=drafts" : "/app/requests", label: "Requests & orders" }, { label: <span className="font-mono">{req.ref}</span> }]}
+        crumbs={[{ href: isDraft ? "/app/requests?tab=drafts" : "/app/requests", label: "Requests" }, { label: <span className="font-mono">{req.ref}</span> }]}
         title={<span className="font-mono">{req.ref}</span>}
         meta={
           <>

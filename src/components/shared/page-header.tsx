@@ -12,7 +12,7 @@ export type Crumb = { href?: string; label: React.ReactNode };
  * `crumbs` renders a breadcrumb trail above the eyebrow ("Requests › REQ-2026-0312 › 02"); the last crumb is the page.
  * When a page has a band header, its content should follow in <PageBand> sections (page / alt).
  */
-export function PageHeader({ eyebrow, eyebrowVariant = "plain", title, titleSuffix, meta, actions, tabs, sticky, band, crumbs, className }: {
+export function PageHeader({ eyebrow, eyebrowVariant = "plain", title, titleSuffix, meta, actions, tabs, sticky, band, crumbs, media, className }: {
   eyebrow?: React.ReactNode;
   eyebrowVariant?: "plain" | "pill";
   title: React.ReactNode;
@@ -24,6 +24,8 @@ export function PageHeader({ eyebrow, eyebrowVariant = "plain", title, titleSuff
   sticky?: boolean;
   band?: boolean;
   crumbs?: Crumb[];
+  /** picture left of the title block (client product pages: the image leads) */
+  media?: React.ReactNode;
   className?: string;
 }) {
   const isBand = band || sticky;
@@ -39,6 +41,8 @@ export function PageHeader({ eyebrow, eyebrowVariant = "plain", title, titleSuff
       {sticky && <StickyHeaderVar />}
       {crumbs && crumbs.length > 0 && <Breadcrumbs crumbs={crumbs} className="mb-2" />}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+        {media}
         <div className="min-w-0">
           {eyebrow && <Eyebrow variant={eyebrowVariant} className="mb-1.5">{eyebrow}</Eyebrow>}
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -46,6 +50,7 @@ export function PageHeader({ eyebrow, eyebrowVariant = "plain", title, titleSuff
             {titleSuffix && <span className="font-mono text-xs text-muted-foreground">{titleSuffix}</span>}
           </div>
           {meta && <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-2">{meta}</div>}
+        </div>
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end [&>*]:max-sm:flex-1">{actions}</div>}
       </div>

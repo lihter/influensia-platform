@@ -1,3 +1,4 @@
+import { ProductThumb, ThumbStack } from "../product-thumb";
 import Link from "next/link";
 import { Factory, Download, Check, MessageCircle, Triangle } from "lucide-react";
 import type { ClientOrderPageDto } from "@/server/client/dto/orders";
@@ -71,8 +72,9 @@ export function ClientOrderView({ dto, preview }: { dto: ClientOrderPageDto; pre
       <PageHeader
         band
         className="pb-6"
-        crumbs={[{ href: "/app/requests", label: "Requests & orders" }, { href: `/app/requests/${o.requestRef}`, label: <span className="font-mono">{o.requestRef}</span> }, { label: <span className="font-mono">{o.ref}</span> }]}
+        crumbs={[{ href: "/app/orders", label: "Orders" }, { href: `/app/requests/${o.requestRef}`, label: <span className="font-mono">{o.requestRef}</span> }, { label: <span className="font-mono">{o.ref}</span> }]}
         title={o.name}
+        media={<ThumbStack items={o.lines.map((l) => ({ name: l.name, image: l.image }))} size="xl" />}
         meta={<>
           <span data-testid="milestone-suffix">{o.exception ? <ExceptionChip exception={o.exception} client /> : <MilestoneChip milestone={o.milestone} waitingOnClient={waitingOnClient} />}</span>
           {o.lines.length > 1 && <span className="text-xs text-muted-foreground">{o.lines.length} lines</span>}
@@ -112,6 +114,7 @@ export function ClientOrderView({ dto, preview }: { dto: ClientOrderPageDto; pre
               <ul className="divide-y divide-hairline-faint">
                 {o.lines.map((l) => (
                   <li key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm first:pt-0 last:pb-0">
+                    <ProductThumb image={l.image} name={l.name} size="md" />
                     <div className="min-w-0 flex-1"><div className="truncate font-medium" title={l.name}>{l.name}</div><Ref muted>{l.lineRef}</Ref></div>
                     <span className="font-mono text-[13px] text-ink-2">{formatQty(l.qty)} {unitLabel(l.unit, l.qty)}</span>
                     <span className="font-mono text-[13px]">{formatUnitPrice({ minorE2: l.unitPrice.minorE2, currency: l.unitPrice.currency })} / {perUnit(l.unit)}</span>

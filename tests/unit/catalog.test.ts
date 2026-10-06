@@ -18,11 +18,12 @@ const sources = { names: ["Qingdao Ecosino Industry Co., Ltd.", "Dongguan Yuantu
 describe("client catalog + range DTOs", () => {
   it("range DTO carries label + items + pdf only and rejects supplier keys", () => {
     const ok = ClientRangeDto.parse({
-      id: crypto.randomUUID(), factoryLabel: "F-0042", yourProducts: ["Card sleeves"], orderRefs: ["ORD-2026-0312"], publishedAt: new Date().toISOString(),
+      id: crypto.randomUUID(), factoryLabel: "F-0042", displayName: "Card sleeves & toploaders", yourProducts: ["Card sleeves"], orderRefs: ["ORD-2026-0312"], publishedAt: new Date().toISOString(),
       pdf: { filename: "Factory-F-0042-range.pdf", bytes: 1234, downloadUrl: "/api/files/org/x/factory_range/y/client/z.pdf" },
       items: [{ id: crypto.randomUUID(), name: "Toploader 55pt", image: null, moq: 20000, moqLabel: "MOQ 20,000", unit: "pcs", price: { minorE2: 1900, currency: "USD", unit: "pcs" }, madeHere: true, note: null }],
     });
     expect(ok.factoryLabel).toBe("F-0042");
+    expect(ok.displayName).toBe("Card sleeves & toploaders");
     expect(() => ClientRangeDto.parse({ ...ok, supplierId: "leak" })).toThrow();
     expect(() => ClientRangeDto.parse({ ...ok, items: [{ ...ok.items[0], supplier_name: "Yuantuo" }] })).toThrow();
     expect(() => ClientRangeSummaryDto.parse({ id: crypto.randomUUID(), factoryLabel: "F-0042", href: "/app/ranges/x", itemCount: 1, yourProducts: [], orderRefs: [], publishedAt: new Date().toISOString(), image: null, preview: [], ref: "FR-0001" })).toThrow();

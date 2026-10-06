@@ -2,6 +2,7 @@
  * Client line page (SPEC F-07). App schema only; supplier facts arrive as numbers (`sourcingCounts`) or a label
  * (`factoryLabelForLine`). Every shape is built field-by-field and parsed through a `.strict()` DTO.
  */
+import { lineThumbnails } from "./thumbnails";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb, type DbOrTx } from "@/db";
 import { requestLines, organizations, users, offers, offerOptions, samples, orders, orderLines, documents, files, comments, activityEvents, productSpecs } from "@/db/schema/app";
@@ -160,9 +161,11 @@ export async function getClientLine(ctx: Ctx, ref: string) {
     : dto.waitingReason === "balance_due" && lc.order ? { label: "View QC report", href: `/app/orders/${lc.order.ref}#qc` }
     : dto.waitingReason === "delivery_confirm" && lc.order ? { label: "Confirm delivery", href: `/app/orders/${lc.order.ref}` }
     : dto.waitingReason === "needs_input" ? { label: "Answer", href: `#ask` } : null;
+  const image = (await lineThumbnails(db, ctx.orgId, [lc.id])).get(lc.id) ?? null;
   return ClientLinePageDto.parse({
     companyLabel: org?.name ?? "",
     line: dto,
+    image,
     waitingReasonDetail: dto.waitingReason === "offer_sent" && offerCard?.validUntil ? `valid until ${offerCard.validUntil}` : null,
     openQuestion: lc.exception === "needs_input" ? lc.openQuestion : null,
     timeline, documents: documents_, previousOrders,

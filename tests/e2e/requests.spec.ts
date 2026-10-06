@@ -198,8 +198,8 @@ test("AC-NEW-08 — agent creates a request on behalf of KOFF; visible to the KO
   const drained = await page.request.get("/api/cron/outbox").then((r) => r.json());
   expect(drained.sent).toBe(3); // ops_new_request × 3, no client_request_received
   await login(page, "buyer@koff.example");
-  await page.goto("/app");
-  await expect(page.locator("[data-milestone-group=received]")).toContainText("REQ-2026-0328-01");
+  await page.goto("/app/products");
+  await expect(page.locator("[data-testid=product-row][data-ref='REQ-2026-0328-01']")).toBeVisible();
   await page.goto("/app/requests/REQ-2026-0328");
   await expect(page.getByTestId("request-line")).toHaveCount(1);
   const html = await page.content();

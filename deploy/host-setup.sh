@@ -41,7 +41,7 @@ chmod 600 deploy/.env
 DC="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 
 echo "== build + start (first build takes ~10 min on t4g.small)"
-$DC build app
+$DC build --build-arg GIT_SHA="$(git rev-parse HEAD)" app
 $DC up -d
 for _ in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:3000/login && break; sleep 5; done
 curl -fsS -o /dev/null http://127.0.0.1:3000/login
@@ -79,5 +79,9 @@ EOF
 systemctl daemon-reload
 systemctl enable --now influensia-backup.timer
 "${REPO}/deploy/backup.sh"
+mkdir -p /var/lib/influensia && git rev-parse HEAD > /var/lib/influensia/deployed-sha
+
+echo "== auto-deploy timer (deploys the GitHub production branch when it moves)"
+"${REPO}/deploy/install-autodeploy.sh"
 
 echo "== done: $APP_URL"

@@ -24,6 +24,9 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 \
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /data/files && chown -R node:node /data
 COPY --from=build --chown=node:node /app /app
+# commit served at /api/version (deploy/update.sh passes --build-arg GIT_SHA=…)
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD curl -fsS http://127.0.0.1:3000/login >/dev/null || exit 1

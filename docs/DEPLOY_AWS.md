@@ -63,12 +63,39 @@ browser ──https──▶ Cloudflare (app.influensia.ro) ──tunnel──�
 
 | Task | How |
 |---|---|
-| Deploy new code | push to `main`, then Outputs → **ServerShell** → `sudo /opt/influensia/app/deploy/update.sh` (backs up first, rebuilds, restarts; ~5–10 min) |
+| Deploy new code | **push to `main`** — GitHub Actions tests, then the server deploys it (see *Automatic deploys*). Manual fallback: Outputs → **ServerShell** → `sudo /opt/influensia/app/deploy/update.sh [commit]` (backs up first, rebuilds, restarts; ~5–10 min) |
+| Roll back | GitHub → Actions → an older green run → re-run its **release** job (the server deploys exactly that commit) |
 | Invite a new client user | In the app (admin): Clients → the company → add user / **Resend invite**; send the link shown |
 | Link expired / forgot password (anyone, incl. agents) | ServerShell → `cd /opt/influensia/app && sudo docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec -T app npm run -s user:link -- bogdan@influensia.ro` → send the printed link |
 | Logs | ServerShell → `cd /opt/influensia/app && sudo docker compose -f deploy/docker-compose.yml --env-file deploy/.env logs --tail 200 app` |
 | Backup now | ServerShell → `sudo /opt/influensia/app/deploy/backup.sh` |
 | First-boot log | ServerShell → `sudo tail -200 /var/log/influensia-setup.log` |
+
+## Automatic deploys (GitHub Actions + server pull)
+`.github/workflows/deploy.yml`, on every push to `main`:
+1. **check** — lint, typecheck, unit tests, full Playwright suite on a production build (incl. the anonymity crawl).
+   A red check = nothing is released. Pull requests run this job only.
+2. **release** — moves the **`production`** branch to the tested commit, then waits until
+   `https://app.influensia.ro/api/version` reports that commit (green) or the server gives up (red).
+3. **Server** — `influensia-autodeploy.timer` runs `deploy/autodeploy.sh` every minute: when `production` moved, it
+   runs `deploy/update.sh <commit>` (backup → build → restart → checks the new container answers with that commit).
+   A commit that fails is not retried; push a fix. Log: `journalctl -u influensia-autodeploy -n 100`.
+
+Why pull: the managed AWS rules on this account deny GitHub OIDC (`iam:*OpenIDConnectProvider*`), and AWS keys stored in
+GitHub would be a standing risk. With pull, GitHub has no AWS access; the server only reads the repo with its token.
+- Typical push → live: ~15–20 min (tests ~8, server build ~5–10).
+- Rollback: Actions → an older green run → re-run its **release** job.
+- Pause auto-deploys: `sudo systemctl disable --now influensia-autodeploy.timer`; re-enable with
+  `sudo /opt/influensia/app/deploy/install-autodeploy.sh` (also installed by host-setup.sh on a new server).
+- The server's GitHub token (in `/opt/influensia/app/.git/config`) must stay valid; when it expires, auto-deploys stop
+  silently and the release job turns red. Rotate: `git -C /opt/influensia/app remote set-url origin
+  https://x-access-token:<NEW>@github.com/lihter/influensia-platform.git`.
+- `deploy/aws/influensia-ci.yaml` (push model via OIDC) is kept but not deployable while the SCP blocks OIDC.
+
+> ⚠️ **Do not update the main `influensia` stack casually.** Its `UbuntuAmi` parameter is an SSM path that
+> CloudFormation re-resolves on every update; if Canonical has published a newer AMI, the server is **replaced**
+> (database and files on the old disk are gone — restore from S3). Put new infrastructure in separate stacks, as
+> `influensia-ci` does, or pin `UbuntuAmi` to the current AMI ID first.
 
 ## Restore from a backup
 ```bash

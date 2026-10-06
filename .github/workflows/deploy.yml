@@ -1,0 +1,91 @@
+# Test → release app.influensia.ro on every push to main.
+#
+#   check    lint, typecheck, unit tests, full Playwright suite (incl. the client-anonymity crawl) on a production build
+#   release  only if check passed: moves the `production` branch to the tested commit, then waits until
+#            app.influensia.ro/api/version reports it. The server pulls: deploy/autodeploy.sh (every minute) sees the
+#            branch move and runs deploy/update.sh <commit> (backup, build, restart, health check).
+#
+# Why pull, not push: the managed AWS rules on our account deny GitHub OIDC sign-in (iam:*OpenIDConnectProvider*),
+# and storing AWS keys in GitHub is worse. This way GitHub has no AWS access at all.
+# Pull requests run `check` only. Rollback: re-run an older successful run's "release" job.
+# Server log: journalctl -u influensia-autodeploy -n 100  (docs/DEPLOY_AWS.md "Automatic deploys").
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  APP_URL: https://app.influensia.ro
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: check-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      CI: "1"
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - name: Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests (production build)
+        run: npx playwright test
+      - name: Keep traces of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  release:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # one release at a time; a newer push waits for the running one instead of cancelling it mid-deploy
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    permissions:
+      contents: write   # move the production branch
+    steps:
+      - uses: actions/checkout@v5
+      - name: Mark this commit as production
+        run: git push --force origin "${GITHUB_SHA}:refs/heads/production"
+
+      - name: Wait until app.influensia.ro runs it
+        run: |
+          SEEN=""
+          for _ in $(seq 1 100); do          # ~35 min: the server checks every minute, then builds for ~5-10 min
+            LIVE=$(curl -fsS --max-time 10 "$APP_URL/api/version" 2>/dev/null | jq -r .sha 2>/dev/null || true)
+            if [ "$LIVE" = "$GITHUB_SHA" ]; then echo "live: $APP_URL runs ${GITHUB_SHA:0:7}"; exit 0; fi
+            [ -n "$LIVE" ] && [ "$LIVE" != null ] && SEEN=1
+            echo "$(date -u +%H:%M:%S) live=${LIVE:-unreachable}"
+            sleep 20
+          done
+          if [ -z "$SEEN" ]; then
+            echo "::warning::could not read $APP_URL/api/version from GitHub's network — check the site by hand"
+            exit 0
+          fi
+          echo "::error::server did not switch to ${GITHUB_SHA:0:7} — on the server: journalctl -u influensia-autodeploy -n 100"
+          exit 1
